@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+streamlit
+openpyxl
+ollama
+langchain
+langchain-community
+chromadb
+pydantic

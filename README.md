@@ -1,0 +1,3 @@
+# Excellm
+
+Excellm (Excel + LLM) is an amateur attempt at creating RAG-like capabilities for Excel sheets with Mistral. It's a simple way to pull off basic data analysis tasks or getting instant answers to the more mundane business queries. Many leaks in this repo were plugged by Generative AI (ironically) or by copying other people's code. Some changes might still be made depending on attempts to improve upon or fix this atrocity.

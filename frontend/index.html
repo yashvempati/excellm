@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Excel Chat Assistant</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <h1>Excel Chat Assistant</h1>
+
+    <form id="upload-form">
+        <input type="file" id="file-upload" name="file" accept=".xlsx" required>
+        <button type="submit">Upload Excel</button>
+    </form>
+
+    <form id="question-form">
+        <input type="text" id="question-input" name="question" placeholder="Ask a question..." required>
+        <button type="submit">Ask</button>
+    </form>
+
+    <div id="chat-box"></div>
+
+    <button id="clear-btn">Clear Data</button>
+    <button id="export-btn">Export Chat History</button>
+
+    <script src="/static/script.js" defer></script>
+</body>
+</html>
