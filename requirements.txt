@@ -10,3 +10,4 @@ pydantic
 python-multipart
 fastembed
 sentence_transformers
+langchain_huggingface
