@@ -9,3 +9,4 @@ chromadb
 pydantic
 python-multipart
 fastembed
+sentence_transformers
