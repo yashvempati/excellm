@@ -15,7 +15,7 @@ app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    with open("index.html", "r") as f:
+    with open("frontend/index.html", "r") as f:
         return f.read()
 
 @app.post("/upload/")
