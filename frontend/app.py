@@ -7,6 +7,9 @@ from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from backend.chat_backend import ChatData
 
+# Hardcoding port as 10000
+port = os.getenv("PORT", 10000)  # Default to 10000 if no PORT environment variable is set
+
 app = FastAPI()
 
 # Initialize Chat Engine
@@ -17,7 +20,7 @@ app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    with open("frontend/static/index.html", "r") as f:  # Updated to match the static directory
+    with open("frontend/index.html", "r") as f:
         return f.read()
 
 @app.post("/upload/")
