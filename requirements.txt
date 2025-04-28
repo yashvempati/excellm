@@ -10,3 +10,4 @@ faiss-cpu
 requests
 ollama
 langchain_huggingface
+httpx
