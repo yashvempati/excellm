@@ -1,9 +1,7 @@
 import pandas as pd
-import io
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.prompts import PromptTemplate
 from langchain_community.llms import Ollama
 
 class ChatData:
@@ -20,25 +18,33 @@ class ChatData:
 
     def ingest_excel(self, excel_stream):
         try:
+            # Open Excel file without loading everything into memory
             xls = pd.ExcelFile(excel_stream)
+            print(f"Loaded Excel file with {len(xls.sheet_names)} sheets.")
+
+            # Process each sheet one by one
             for sheet_name in xls.sheet_names:
-                self.dataframes[sheet_name] = xls.parse(sheet_name)
-            self.create_vectorstore()
+                df = xls.parse(sheet_name)
+                print(f"Parsing sheet: {sheet_name}")
+
+                # Process the sheet data into a suitable format
+                sheet_text = f"Sheet: {sheet_name}\n{df.to_string(index=False)}"
+                texts = [sheet_text]
+
+                # Split texts into manageable chunks
+                splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+                docs = splitter.create_documents(texts)
+
+                # Add documents to vectorstore
+                if self.vectorstore is None:
+                    self.vectorstore = FAISS.from_documents(docs, self.embeddings)
+                else:
+                    self.vectorstore.add_documents(docs)
+
+            print("Finished processing Excel file.")
         except Exception as e:
+            print(f"Error during Excel ingestion: {str(e)}")
             raise ValueError(f"Failed to read Excel file: {str(e)}")
-
-    def create_vectorstore(self):
-        texts = []
-        for sheet_name, df in self.dataframes.items():
-            sheet_text = f"Sheet: {sheet_name}\n{df.to_string(index=False)}"
-            texts.append(sheet_text)
-
-        # Split texts into manageable chunks
-        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        docs = splitter.create_documents(texts)
-
-        # Create FAISS Vectorstore
-        self.vectorstore = FAISS.from_documents(docs, self.embeddings)
 
     def ask(self, question):
         if not self.vectorstore:
