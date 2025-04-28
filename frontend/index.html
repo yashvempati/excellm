@@ -9,24 +9,26 @@
     <div class="container">
         <h1>Excel LLM Chat</h1>
 
-        <form id="uploadForm">
+        <!-- Upload Form (fixed with action="javascript:void(0);") -->
+        <form id="uploadForm" action="javascript:void(0);">
             <input type="file" id="fileInput" accept=".xlsx" />
             <button type="submit">Upload Excel</button>
         </form>
 
         <div id="chatBox"></div>
 
-        <form id="askForm">
+        <!-- Ask Form (fixed with action="javascript:void(0);") -->
+        <form id="askForm" action="javascript:void(0);">
             <input type="text" id="questionInput" placeholder="Ask a question..." required />
             <button type="submit">Ask</button>
         </form>
 
         <div class="buttons">
-            <button id="clearButton" type="button">Clear Chat</button>
-            <button id="exportButton" type="button">Export Chat</button>
+            <button id="clearButton">Clear Chat</button>
+            <button id="exportButton">Export Chat</button>
         </div>
     </div>
 
-    <script src="/static/script.js"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html>
