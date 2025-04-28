@@ -7,7 +7,9 @@ const chatBox = document.getElementById('chatBox');
 uploadForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fileInput = document.getElementById('fileInput');
-    if (!fileInput.files.length) return alert("Please choose an Excel file!");
+    if (!fileInput.files.length) {
+        return alert("Please choose an Excel file!");
+    }
 
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
