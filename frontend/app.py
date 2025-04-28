@@ -11,7 +11,7 @@ app = FastAPI()
 chat_engine = ChatData()
 
 # Serve static frontend
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
