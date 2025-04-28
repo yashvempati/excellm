@@ -60,20 +60,3 @@ async def export_chat():
         )
     except Exception as e:
         return JSONResponse({"error": f"Export failed: {str(e)}"}, status_code=500)
-
-# --- Auto ping itself every 12 minutes ---
-async def ping_self():
-    while True:
-        try:
-            async with httpx.AsyncClient() as client:
-                await client.get("https://excellm.onrender.com/")  # <-- Your Render URL
-                print("✅ Self-ping successful")
-        except Exception as e:
-            print(f"⚠️ Self-ping failed: {e}")
-        await asyncio.sleep(720)  # 12 minutes
-
-# Start self-pinging only in production
-if os.getenv("RENDER") == "true":
-    @app.on_event("startup")
-    async def startup_event():
-        asyncio.create_task(ping_self())
