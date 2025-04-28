@@ -12,12 +12,12 @@ app = FastAPI()
 # Initialize Chat Engine
 chat_engine = ChatData()
 
-# Serve static frontend
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Serve static frontend (updated path to the 'frontend/static' directory)
+app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    with open("static/index.html", "r") as f:
+    with open("frontend/static/index.html", "r") as f:  # Updated to match the static directory
         return f.read()
 
 @app.post("/upload/")
@@ -63,7 +63,7 @@ async def ping_self():
     while True:
         try:
             async with httpx.AsyncClient() as client:
-                await client.get("https://your-app-name.onrender.com/")  # <-- Replace with your actual Render URL
+                await client.get("https://excellm.onrender.com/")  # <-- Your Render URL
                 print("✅ Self-ping successful")
         except Exception as e:
             print(f"⚠️ Self-ping failed: {e}")
