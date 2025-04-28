@@ -7,9 +7,7 @@ const chatBox = document.getElementById('chatBox');
 uploadForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fileInput = document.getElementById('fileInput');
-    if (!fileInput.files.length) {
-        return alert("Please choose an Excel file!");
-    }
+    if (!fileInput.files.length) return alert("Please choose an Excel file!");
 
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
@@ -57,7 +55,11 @@ exportButton.addEventListener('click', async () => {
 
 function addMessage(sender, text) {
     const message = document.createElement('div');
-    message.innerHTML = `<b>${sender}:</b> ${text}`;
+    let senderClass = "";
+    if (sender.toLowerCase() === "system") senderClass = "system";
+    else if (sender.toLowerCase() === "bot") senderClass = "bot";
+
+    message.innerHTML = `<b class="${senderClass}">${sender}</b> ${text}`;
     chatBox.appendChild(message);
     chatBox.scrollTop = chatBox.scrollHeight;
 }
