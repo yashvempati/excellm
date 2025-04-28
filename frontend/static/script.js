@@ -12,9 +12,18 @@ uploadForm.addEventListener('submit', async (e) => {
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
 
+    // Show loading message while uploading
+    addMessage("System", "Uploading file, please wait...");
+
     const res = await fetch('/upload/', { method: 'POST', body: formData });
     const data = await res.json();
-    addMessage("System", data.message || data.error);
+    
+    // Show result of upload (success or error)
+    if (res.ok) {
+        addMessage("System", data.message || "File uploaded successfully!");
+    } else {
+        addMessage("System", data.error || "Error uploading file.");
+    }
 });
 
 askForm.addEventListener('submit', async (e) => {
@@ -29,9 +38,18 @@ askForm.addEventListener('submit', async (e) => {
     const formData = new FormData();
     formData.append('question', question);
 
+    // Show loading message while waiting for response
+    addMessage("System", "Getting response from the bot...");
+
     const res = await fetch('/ask/', { method: 'POST', body: formData });
     const data = await res.json();
-    addMessage("Bot", data.answer || data.error);
+
+    // Show bot's answer or error
+    if (res.ok) {
+        addMessage("Bot", data.answer || "No answer found.");
+    } else {
+        addMessage("Bot", data.error || "Error occurred while processing your question.");
+    }
 });
 
 clearButton.addEventListener('click', async () => {
@@ -55,11 +73,7 @@ exportButton.addEventListener('click', async () => {
 
 function addMessage(sender, text) {
     const message = document.createElement('div');
-    let senderClass = "";
-    if (sender.toLowerCase() === "system") senderClass = "system";
-    else if (sender.toLowerCase() === "bot") senderClass = "bot";
-
-    message.innerHTML = `<b class="${senderClass}">${sender}</b> ${text}`;
+    message.innerHTML = `<b>${sender}:</b> ${text}`;
     chatBox.appendChild(message);
     chatBox.scrollTop = chatBox.scrollHeight;
 }
