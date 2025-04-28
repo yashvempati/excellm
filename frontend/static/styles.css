@@ -16,6 +16,7 @@ body {
 
 h1 {
     text-align: center;
+    color: #222;
 }
 
 #chatBox {
@@ -25,6 +26,8 @@ h1 {
     overflow-y: auto;
     margin: 15px 0;
     border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.4;
 }
 
 form, .buttons {
@@ -36,9 +39,47 @@ form, .buttons {
 input[type="text"], input[type="file"] {
     flex: 1;
     padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
 }
 
 button {
     padding: 8px 12px;
     cursor: pointer;
+    background-color: black;
+    color: yellow;
+    border: none;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+}
+
+button:hover {
+    background-color: #333;
+}
+
+.buttons button {
+    flex: 1;
+}
+
+/* Message styling */
+#chatBox div b {
+    display: inline-block;
+    min-width: 60px;
+}
+
+#chatBox div b::after {
+    content: ":";
+    margin-right: 4px;
+}
+
+#chatBox div b {
+    color: black;
+}
+
+#chatBox div b.system {
+    color: goldenrod;
+}
+
+#chatBox div b.bot {
+    color: gray;
 }
