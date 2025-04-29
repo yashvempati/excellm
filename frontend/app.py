@@ -1,58 +1,59 @@
-import os
-import io
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+from fastapi import FastAPI, UploadFile, Form
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from backend.chat_backend import ChatData
 
 app = FastAPI()
+chat = ChatData()
 
-# Initialize Chat Engine
-chat_engine = ChatData()
+# Allow frontend JS to access backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Serve static frontend
+# Mount static folder (script.js, styles.css)
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
+# Serve index.html
 @app.get("/", response_class=HTMLResponse)
-async def read_root():
-    with open("frontend/index.html", "r") as f:
+async def serve_home():
+    with open("index.html", "r", encoding="utf-8") as f:
         return f.read()
 
+# Upload Excel file
 @app.post("/upload/")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile):
     try:
-        file_content = await file.read()
-        excel_stream = io.BytesIO(file_content)
-        chat_engine.ingest_excel(excel_stream)
-        return JSONResponse({"message": f"Successfully ingested {file.filename}"})
+        contents = await file.read()
+        chat.ingest_excel(contents)
+        return {"message": f"Uploaded and processed {file.filename}"}
     except Exception as e:
-        return JSONResponse({"error": f"File upload failed: {str(e)}"}, status_code=400)
+        return JSONResponse(status_code=400, content={"error": str(e)})
 
+# Ask a question
 @app.post("/ask/")
 async def ask_question(question: str = Form(...)):
     try:
-        answer = chat_engine.ask(question)
-        return JSONResponse({"answer": answer})
+        answer = chat.ask(question)
+        return {"answer": answer}
     except Exception as e:
-        return JSONResponse({"error": f"Answering failed: {str(e)}"}, status_code=500)
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
+# Clear chat
 @app.post("/clear/")
-async def clear_data():
-    try:
-        chat_engine.clear()
-        return JSONResponse({"message": "All data cleared."})
-    except Exception as e:
-        return JSONResponse({"error": f"Clearing failed: {str(e)}"}, status_code=500)
+async def clear_chat():
+    chat.clear()
+    return {"message": "Chat history cleared."}
 
+# Export chat history
 @app.get("/export/")
 async def export_chat():
-    try:
-        history_text = chat_engine.export_chat_history()
-        return StreamingResponse(
-            iter([history_text]),
-            media_type="text/plain",
-            headers={"Content-Disposition": "attachment; filename=chat_history.txt"}
-        )
-    except Exception as e:
-        return JSONResponse({"error": f"Export failed: {str(e)}"}, status_code=500)
-
+    history = chat.export_chat_history()
+    file_path = "/tmp/chat_history.txt"
+    with open(file_path, "w") as f:
+        f.write(history)
+    return FileResponse(path=file_path, filename="chat_history.txt", media_type="text/plain")
