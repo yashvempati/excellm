@@ -1,10 +1,11 @@
 services:
   - type: web
     name: excellm
-    env: python
-    plan: free
+    runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn frontend.app:app --host=0.0.0.0 --port=10000
     envVars:
       - key: PORT
         value: 10000
+    autoDeploy: true
+    plan: free
