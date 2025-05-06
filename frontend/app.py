@@ -1,59 +1,63 @@
-from fastapi import FastAPI, UploadFile, Form
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from backend.chat_backend import ChatData
+from flask import Flask, request, jsonify, send_file, render_template_string
+from werkzeug.utils import secure_filename
+import io
+from chat_backend import ChatData
+import os
 
-app = FastAPI()
-chat = ChatData()
+app = Flask(__name__)
+chat_data = ChatData()
 
-# Allow frontend JS to access backend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Serve the index.html file manually
+with open("index.html", "r") as f:
+    INDEX_HTML = f.read()
 
-# Mount static folder (script.js, styles.css)
-app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+@app.route("/")
+def index():
+    return render_template_string(INDEX_HTML)
 
-# Serve index.html
-@app.get("/", response_class=HTMLResponse)
-async def serve_home():
-    with open("index.html", "r", encoding="utf-8") as f:
-        return f.read()
+@app.route("/static/<path:filename>")
+def static_files(filename):
+    return send_file(f"static/{filename}")
 
-# Upload Excel file
-@app.post("/upload/")
-async def upload_file(file: UploadFile):
+@app.route("/upload/", methods=["POST"])
+def upload_excel():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded."}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No file selected."}), 400
+
     try:
-        contents = await file.read()
-        chat.ingest_excel(contents)
-        return {"message": f"Uploaded and processed {file.filename}"}
+        file_bytes = io.BytesIO(file.read())
+        chat_data.ingest_excel(file_bytes)
+        return jsonify({"message": f"File '{secure_filename(file.filename)}' processed successfully."})
     except Exception as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
+        return jsonify({"error": str(e)}), 500
 
-# Ask a question
-@app.post("/ask/")
-async def ask_question(question: str = Form(...)):
+@app.route("/ask/", methods=["POST"])
+def ask_question():
+    question = request.form.get("question", "")
+    if not question:
+        return jsonify({"error": "No question provided."}), 400
+
     try:
-        answer = chat.ask(question)
-        return {"answer": answer}
+        answer = chat_data.ask(question)
+        return jsonify({"answer": answer})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return jsonify({"error": str(e)}), 500
 
-# Clear chat
-@app.post("/clear/")
-async def clear_chat():
-    chat.clear()
-    return {"message": "Chat history cleared."}
+@app.route("/clear/", methods=["POST"])
+def clear_data():
+    chat_data.clear()
+    return jsonify({"message": "Data cleared successfully."})
 
-# Export chat history
-@app.get("/export/")
-async def export_chat():
-    history = chat.export_chat_history()
-    file_path = "/tmp/chat_history.txt"
-    with open(file_path, "w") as f:
-        f.write(history)
-    return FileResponse(path=file_path, filename="chat_history.txt", media_type="text/plain")
+@app.route("/export/", methods=["GET"])
+def export_chat():
+    export_text = chat_data.export_chat_history()
+    export_file = io.BytesIO(export_text.encode("utf-8"))
+    export_file.seek(0)
+    return send_file(export_file, mimetype="text/plain", as_attachment=True, download_name="chat_history.txt")
+
+if __name__ == "__main__":
+    app.run(debug=True)
