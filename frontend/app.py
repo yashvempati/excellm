@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_file, render_template_string
 from werkzeug.utils import secure_filename
 import io
-from backend/chat_backend import ChatData
+from backend/chat_backend.py import ChatData
 import os
 import threading
 import time
