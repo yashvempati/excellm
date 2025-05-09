@@ -1,87 +1,88 @@
-from flask import Flask, request, jsonify, send_file, render_template_string
-from werkzeug.utils import secure_filename
-import io
-from backend/chat_backend.py import ChatData
 import os
-import threading
-import time
-import requests
+import io
+from pathlib import Path
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from backend.chat_backend import ChatData
 
-app = Flask(__name__)
-chat_data = ChatData()
+# Get the base directory
+BASE_DIR = Path(__file__).resolve().parent
 
-# Serve the index.html file manually
-with open("index.html", "r") as f:
-    INDEX_HTML = f.read()
+app = FastAPI(title="Excel Chat Assistant")
 
-@app.route("/")
-def index():
-    return render_template_string(INDEX_HTML)
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with your frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.route("/static/<path:filename>")
-def static_files(filename):
-    return send_file(f"static/{filename}")
+# Load ChatData once at startup
+chat_engine = ChatData()
 
-@app.route("/upload/", methods=["POST"])
-def upload_excel():
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded."}), 400
+# Serve static files (HTML, JS, CSS)
+static_dir = BASE_DIR / "static"
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"error": "No file selected."}), 400
-
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
     try:
-        file_bytes = io.BytesIO(file.read())
-        chat_data.ingest_excel(file_bytes)
-        return jsonify({"message": f"File '{secure_filename(file.filename)}' processed successfully."})
+        index_path = BASE_DIR / "index.html"
+        if not index_path.exists():
+            raise HTTPException(status_code=404, detail="index.html not found")
+        return index_path.read_text()
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=f"Error reading index.html: {str(e)}")
 
-@app.route("/ask/", methods=["POST"])
-def ask_question():
-    question = request.form.get("question", "")
-    if not question:
-        return jsonify({"error": "No question provided."}), 400
-
+@app.post("/upload/")
+async def upload_file(file: UploadFile = File(...)):
+    if not file.filename.endswith('.xlsx'):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are allowed")
+    
     try:
-        answer = chat_data.ask(question)
-        return jsonify({"answer": answer})
+        file_content = await file.read()
+        excel_stream = io.BytesIO(file_content)
+        chat_engine.ingest_excel(excel_stream)
+        return JSONResponse({"message": f"Successfully ingested {file.filename}"})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=400, detail=f"Error with file upload: {str(e)}")
 
-@app.route("/clear/", methods=["POST"])
-def clear_data():
-    chat_data.clear()
-    return jsonify({"message": "Data cleared successfully."})
+@app.post("/ask/")
+async def ask_question(question: str = Form(...)):
+    if not question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    
+    try:
+        answer = chat_engine.ask(question)
+        return JSONResponse({"answer": answer})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error during answering: {str(e)}")
 
-@app.route("/export/", methods=["GET"])
-def export_chat():
-    export_text = chat_data.export_chat_history()
-    export_file = io.BytesIO(export_text.encode("utf-8"))
-    export_file.seek(0)
-    return send_file(export_file, mimetype="text/plain", as_attachment=True, download_name="chat_history.txt")
+@app.post("/clear/")
+async def clear_data():
+    try:
+        chat_engine.clear()
+        return JSONResponse({"message": "Cleared all ingested data."})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error during clearing: {str(e)}")
 
+@app.get("/export/")
+async def export_chat():
+    try:
+        history_text = chat_engine.export_chat_history()
+        return StreamingResponse(
+            iter([history_text.encode()]),
+            media_type="text/plain",
+            headers={"Content-Disposition": "attachment; filename=chat_export.txt"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error during export: {str(e)}")
 
-# 🔁 Keep-alive pinger to stop Render sleeping
-def keep_alive():
-    ping_url = os.environ.get("RENDER_EXTERNAL_URL")
-    if not ping_url:
-        print("RENDER_EXTERNAL_URL not set. Self-ping disabled.")
-        return
-
-    def ping_loop():
-        while True:
-            try:
-                print(f"Pinging self at {ping_url}")
-                requests.get(ping_url)
-            except Exception as e:
-                print(f"Ping failed: {e}")
-            time.sleep(14 * 60)  # every 14 minutes
-
-    threading.Thread(target=ping_loop, daemon=True).start()
-
-keep_alive()
-
-if __name__ == "__main__":
-    app.run(debug=True)
+# Health check endpoint for Render
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
