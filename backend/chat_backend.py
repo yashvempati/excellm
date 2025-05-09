@@ -11,7 +11,7 @@ from langchain_community.vectorstores.utils import filter_complex_metadata
 from langchain.prompts import PromptTemplate
 from langchain_community.llms import Ollama
 from langchain.schema.runnable import RunnablePassthrough
-from langchain.output_parsers import StrOutputParser
+from langchain_core.output_parsers import StrOutputParser
 
 class ChatData:
     def __init__(self):
