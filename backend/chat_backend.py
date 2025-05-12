@@ -2,6 +2,9 @@ import os
 import stat
 import io
 import shutil
+import threading
+import time
+import requests
 import openpyxl
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -38,10 +41,15 @@ class ChatData:
             Answer: [/INST] </s>
             """
         )
-        
-        # Initialize Ollama
+
+        # Initialize Ollama and embeddings
         self.llm = Ollama(model="mistral")
         self.embeddings = OllamaEmbeddings(model="mistral")
+
+        # Start self-ping loop (Render free-tier prevention)
+        self.ping_url = os.environ.get("RENDER_EXTERNAL_URL")
+        self.keep_awake = True
+        self._start_self_pinger()
 
     def _ensure_writable(self, path):
         try:
@@ -53,6 +61,23 @@ class ChatData:
                     os.chmod(os.path.join(root, f), stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
         except Exception as e:
             raise RuntimeError(f"Failed to set permissions on {path}: {str(e)}")
+
+    def _start_self_pinger(self):
+        if not self.ping_url:
+            print("Self-ping URL not set. Skipping self-ping setup.")
+            return
+
+        def ping():
+            while self.keep_awake:
+                try:
+                    print(f"Pinging {self.ping_url} to prevent Render sleep...")
+                    requests.get(self.ping_url, timeout=10)
+                except Exception as e:
+                    print(f"Self-ping failed: {e}")
+                time.sleep(600)  # every 10 minutes
+
+        thread = threading.Thread(target=ping, daemon=True)
+        thread.start()
 
     def _initialize_vector_store(self, documents):
         try:
@@ -67,8 +92,12 @@ class ChatData:
 
     def ingest_excel(self, excel_file):
         try:
+            # Check type and content
             if not isinstance(excel_file, io.BytesIO):
-                raise TypeError(f"Invalid file type: {type(excel_file)}. Expected a BytesIO object.")
+                raise TypeError("Uploaded file must be a BytesIO object")
+
+            if not self._is_excel_file(excel_file):
+                raise ValueError("Uploaded file does not appear to be a valid Excel (.xlsx or .xlsm) file.")
 
             wb = openpyxl.load_workbook(excel_file, data_only=True, read_only=True)
             sheets_to_process = wb.sheetnames
@@ -81,7 +110,6 @@ class ChatData:
                     continue
 
                 headers = [str(h) for h in rows[0]]
-
                 for i, row in enumerate(rows[1:], start=2):
                     if all(v is None for v in row):
                         continue
@@ -105,6 +133,16 @@ class ChatData:
         except Exception as e:
             raise RuntimeError(f"Failed to ingest Excel file: {str(e)}")
 
+    def _is_excel_file(self, file_obj):
+        try:
+            # openpyxl will raise if it's not a valid Excel file
+            openpyxl.load_workbook(file_obj, read_only=True)
+            file_obj.seek(0)
+            return True
+        except Exception:
+            file_obj.seek(0)
+            return False
+
     def _create_retriever_and_chain(self):
         if self.vector_store:
             self.retriever = self.vector_store.as_retriever(
@@ -124,8 +162,6 @@ class ChatData:
 
         try:
             response = self.chain.invoke(query).strip()
-
-            # Save to chat history
             self.chat_history.append({"question": query, "answer": response})
 
             if response.startswith("```python") and response.endswith("```"):
@@ -157,7 +193,6 @@ class ChatData:
             lines = []
             for entry in self.chat_history:
                 lines.append(f"Q: {entry['question']}\nA: {entry['answer']}\n")
-            
             return "\n".join(lines)
         except Exception as e:
             raise RuntimeError(f"Failed to export chat history: {str(e)}")
