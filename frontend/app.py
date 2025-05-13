@@ -52,17 +52,25 @@ async def upload_file(file: UploadFile = File(...)):
         if not file_content:
             raise HTTPException(status_code=400, detail="Empty file provided")
             
-        # Create BytesIO object
+        # Create BytesIO object and ensure it's at the beginning
         excel_stream = io.BytesIO(file_content)
+        excel_stream.seek(0)
         
         # Try to validate if it's a valid Excel file
         try:
             chat_engine.ingest_excel(excel_stream)
-            return JSONResponse({"message": f"Successfully ingested {file.filename}"})
+            return JSONResponse({
+                "message": f"Successfully ingested {file.filename}",
+                "status": "success"
+            })
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error processing Excel file: {str(e)}")
+        finally:
+            # Clean up
+            excel_stream.close()
+            await file.close()
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error with file upload: {str(e)}")
