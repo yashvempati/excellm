@@ -7,22 +7,34 @@ const chatBox = document.getElementById('chatBox');
 uploadForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fileInput = document.getElementById('fileInput');
-    if (!fileInput.files.length) return alert("Please choose an Excel file!");
+    if (!fileInput.files.length) {
+        addMessage("System", "Please choose an Excel file!");
+        return;
+    }
+
+    const file = fileInput.files[0];
+    if (!file.name.endsWith('.xlsx')) {
+        addMessage("System", "Only .xlsx files are allowed!");
+        return;
+    }
 
     const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
+    formData.append('file', file);
 
     // Show loading message while uploading
     addMessage("System", "Uploading file, please wait...");
 
-    const res = await fetch('/upload/', { method: 'POST', body: formData });
-    const data = await res.json();
-    
-    // Show result of upload (success or error)
-    if (res.ok) {
-        addMessage("System", data.message || "File uploaded successfully!");
-    } else {
-        addMessage("System", data.error || "Error uploading file.");
+    try {
+        const res = await fetch('/upload/', { method: 'POST', body: formData });
+        const data = await res.json();
+        
+        if (res.ok) {
+            addMessage("System", data.message || "File uploaded successfully!");
+        } else {
+            addMessage("System", `Error: ${data.detail || data.error || "Failed to upload file"}`);
+        }
+    } catch (error) {
+        addMessage("System", `Error: ${error.message || "Failed to upload file"}`);
     }
 });
 
