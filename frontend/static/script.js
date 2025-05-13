@@ -25,16 +25,28 @@ uploadForm.addEventListener('submit', async (e) => {
     addMessage("System", "Uploading file, please wait...");
 
     try {
-        const res = await fetch('/upload/', { method: 'POST', body: formData });
-        const data = await res.json();
+        const res = await fetch('/upload/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
         
-        if (res.ok) {
-            addMessage("System", data.message || "File uploaded successfully!");
-        } else {
-            addMessage("System", `Error: ${data.detail || data.error || "Failed to upload file"}`);
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.detail || errorData.error || 'Failed to upload file');
         }
+        
+        const data = await res.json();
+        addMessage("System", data.message || "File uploaded successfully!");
+        
+        // Clear the file input after successful upload
+        fileInput.value = '';
+        
     } catch (error) {
         addMessage("System", `Error: ${error.message || "Failed to upload file"}`);
+        console.error('Upload error:', error);
     }
 });
 
