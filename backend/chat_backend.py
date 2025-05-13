@@ -90,6 +90,27 @@ class ChatData:
         except Exception as e:
             raise RuntimeError(f"Failed to initialize vector store: {str(e)}")
 
+    def _is_excel_file(self, file_obj):
+        try:
+            # Save current position
+            current_pos = file_obj.tell()
+            
+            # Try to load the workbook
+            try:
+                wb = openpyxl.load_workbook(file_obj, read_only=True)
+                # Check if it has any sheets
+                if not wb.sheetnames:
+                    return False
+            except Exception:
+                return False
+            finally:
+                # Reset file pointer to original position
+                file_obj.seek(current_pos)
+            
+            return True
+        except Exception:
+            return False
+
     def ingest_excel(self, excel_file):
         try:
             # Check type and content
@@ -97,10 +118,17 @@ class ChatData:
                 raise TypeError("Uploaded file must be a BytesIO object")
 
             if not self._is_excel_file(excel_file):
-                raise ValueError("Uploaded file does not appear to be a valid Excel (.xlsx or .xlsm) file.")
+                raise ValueError("The uploaded file is not a valid Excel file or is corrupted.")
 
+            # Reset file pointer to beginning
+            excel_file.seek(0)
+            
             wb = openpyxl.load_workbook(excel_file, data_only=True, read_only=True)
             sheets_to_process = wb.sheetnames
+            
+            if not sheets_to_process:
+                raise ValueError("The Excel file contains no sheets.")
+                
             docs = []
 
             for sheet in sheets_to_process:
@@ -110,6 +138,9 @@ class ChatData:
                     continue
 
                 headers = [str(h) for h in rows[0]]
+                if not headers:
+                    continue
+                    
                 for i, row in enumerate(rows[1:], start=2):
                     if all(v is None for v in row):
                         continue
@@ -118,7 +149,7 @@ class ChatData:
                     docs.append(Document(page_content=content, metadata={"sheet": sheet}))
 
             if not docs:
-                raise ValueError("No valid data found in the Excel file")
+                raise ValueError("No valid data found in the Excel file. Please ensure the file contains at least one sheet with headers and data.")
 
             chunks = self.text_splitter.split_documents(docs)
             chunks = filter_complex_metadata(chunks)
@@ -132,16 +163,6 @@ class ChatData:
             self._create_retriever_and_chain()
         except Exception as e:
             raise RuntimeError(f"Failed to ingest Excel file: {str(e)}")
-
-    def _is_excel_file(self, file_obj):
-        try:
-            # openpyxl will raise if it's not a valid Excel file
-            openpyxl.load_workbook(file_obj, read_only=True)
-            file_obj.seek(0)
-            return True
-        except Exception:
-            file_obj.seek(0)
-            return False
 
     def _create_retriever_and_chain(self):
         if self.vector_store:
