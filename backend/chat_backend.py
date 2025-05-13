@@ -117,50 +117,60 @@ class ChatData:
             if not isinstance(excel_file, io.BytesIO):
                 raise TypeError("Uploaded file must be a BytesIO object")
 
+            # Ensure file pointer is at the beginning
+            excel_file.seek(0)
+            
             if not self._is_excel_file(excel_file):
                 raise ValueError("The uploaded file is not a valid Excel file or is corrupted.")
 
-            # Reset file pointer to beginning
+            # Reset file pointer to beginning again after validation
             excel_file.seek(0)
             
-            wb = openpyxl.load_workbook(excel_file, data_only=True, read_only=True)
-            sheets_to_process = wb.sheetnames
-            
-            if not sheets_to_process:
-                raise ValueError("The Excel file contains no sheets.")
+            try:
+                wb = openpyxl.load_workbook(excel_file, data_only=True, read_only=True)
+                sheets_to_process = wb.sheetnames
                 
-            docs = []
-
-            for sheet in sheets_to_process:
-                ws = wb[sheet]
-                rows = list(ws.iter_rows(values_only=True))
-                if not rows or not rows[0]:
-                    continue
-
-                headers = [str(h) for h in rows[0]]
-                if not headers:
-                    continue
+                if not sheets_to_process:
+                    raise ValueError("The Excel file contains no sheets.")
                     
-                for i, row in enumerate(rows[1:], start=2):
-                    if all(v is None for v in row):
+                docs = []
+
+                for sheet in sheets_to_process:
+                    ws = wb[sheet]
+                    rows = list(ws.iter_rows(values_only=True))
+                    if not rows or not rows[0]:
                         continue
-                    row_data = dict(zip(headers, row))
-                    content = f"Sheet: {sheet}\nRow {i}\nData:\n{row_data}"
-                    docs.append(Document(page_content=content, metadata={"sheet": sheet}))
 
-            if not docs:
-                raise ValueError("No valid data found in the Excel file. Please ensure the file contains at least one sheet with headers and data.")
+                    headers = [str(h) for h in rows[0]]
+                    if not headers:
+                        continue
+                        
+                    for i, row in enumerate(rows[1:], start=2):
+                        if all(v is None for v in row):
+                            continue
+                        row_data = dict(zip(headers, row))
+                        content = f"Sheet: {sheet}\nRow {i}\nData:\n{row_data}"
+                        docs.append(Document(page_content=content, metadata={"sheet": sheet}))
 
-            chunks = self.text_splitter.split_documents(docs)
-            chunks = filter_complex_metadata(chunks)
+                if not docs:
+                    raise ValueError("No valid data found in the Excel file. Please ensure the file contains at least one sheet with headers and data.")
 
-            if self.vector_store is None:
-                self._initialize_vector_store(chunks)
-            else:
-                self.vector_store.add_documents(chunks)
-                self.vector_store.persist()
+                chunks = self.text_splitter.split_documents(docs)
+                chunks = filter_complex_metadata(chunks)
 
-            self._create_retriever_and_chain()
+                if self.vector_store is None:
+                    self._initialize_vector_store(chunks)
+                else:
+                    self.vector_store.add_documents(chunks)
+                    self.vector_store.persist()
+
+                self._create_retriever_and_chain()
+                
+            finally:
+                # Clean up workbook
+                if 'wb' in locals():
+                    wb.close()
+                
         except Exception as e:
             raise RuntimeError(f"Failed to ingest Excel file: {str(e)}")
 
