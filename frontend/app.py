@@ -40,16 +40,32 @@ async def read_root():
 
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+        
     if not file.filename.endswith('.xlsx'):
         raise HTTPException(status_code=400, detail="Only .xlsx files are allowed")
     
     try:
+        # Read file content
         file_content = await file.read()
+        if not file_content:
+            raise HTTPException(status_code=400, detail="Empty file provided")
+            
+        # Create BytesIO object
         excel_stream = io.BytesIO(file_content)
-        chat_engine.ingest_excel(excel_stream)
-        return JSONResponse({"message": f"Successfully ingested {file.filename}"})
+        
+        # Try to validate if it's a valid Excel file
+        try:
+            chat_engine.ingest_excel(excel_stream)
+            return JSONResponse({"message": f"Successfully ingested {file.filename}"})
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error processing Excel file: {str(e)}")
+            
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error with file upload: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error with file upload: {str(e)}")
 
 @app.post("/ask/")
 async def ask_question(question: str = Form(...)):
