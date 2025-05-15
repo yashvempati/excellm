@@ -9,14 +9,12 @@ import openpyxl
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores.utils import filter_complex_metadata
 from langchain.prompts import PromptTemplate
-from langchain_community.llms import GPT4All
 from langchain.schema.runnable import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain_community.embeddings import OllamaEmbeddings
-from langchain_community.llms import Ollama
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.llms import HuggingFaceHub
 
 class ChatData:
     def __init__(self):
@@ -44,27 +42,30 @@ class ChatData:
             """
         )
 
-        # Initialize Ollama services
+        # Initialize HuggingFace services
         try:
-            # Get Ollama host from environment or use default
-            ollama_host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+            # Get HuggingFace API key from environment
+            hf_api_key = os.environ.get("HUGGINGFACE_API_KEY")
+            if not hf_api_key:
+                raise RuntimeError(
+                    "HUGGINGFACE_API_KEY environment variable is not set. "
+                    "Please set it in your Render environment variables."
+                )
             
             # Initialize embeddings and LLM
-            self.embeddings = OllamaEmbeddings(
-                model="nomic-embed-text",
-                base_url=ollama_host
+            self.embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                model_kwargs={'device': 'cpu'}
             )
             
-            self.llm = Ollama(
-                model="tinyllama",
-                base_url=ollama_host,
-                temperature=0.5,
-                num_ctx=2048  # Increased context window for better Excel analysis
+            self.llm = HuggingFaceHub(
+                repo_id="google/flan-t5-base",
+                model_kwargs={"temperature": 0.5, "max_length": 512},
+                huggingfacehub_api_token=hf_api_key
             )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to connect to Ollama at {ollama_host}. "
-                "Please ensure Ollama is running and the model is pulled. "
+                f"Failed to initialize HuggingFace services. "
                 f"Error: {str(e)}"
             )
 
