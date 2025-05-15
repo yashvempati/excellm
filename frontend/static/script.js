@@ -33,12 +33,21 @@ uploadForm.addEventListener('submit', async (e) => {
             }
         });
         
+        const data = await res.json();
+        
         if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.detail || errorData.error || 'Failed to upload file');
+            let errorMessage = data.detail || data.error || 'Failed to upload file';
+            
+            // Check for HuggingFace API errors
+            if (errorMessage.includes('HUGGINGFACE_API_KEY')) {
+                errorMessage = "Error: HuggingFace API key is not configured. Please set the HUGGINGFACE_API_KEY environment variable.";
+            } else if (errorMessage.includes('HuggingFace')) {
+                errorMessage = "Error: Failed to connect to HuggingFace services. Please check the server configuration.";
+            }
+            
+            throw new Error(errorMessage);
         }
         
-        const data = await res.json();
         addMessage("System", data.message || "File uploaded successfully!");
         
         // Clear the file input after successful upload
