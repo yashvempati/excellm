@@ -1,11 +1,16 @@
 services:
   - type: web
     name: excellm
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn frontend.app:app --host=0.0.0.0 --port=10000
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: PORT
         value: 10000
+      - key: OLLAMA_HOST
+        value: http://localhost:11434
     autoDeploy: true
     plan: free
+    resources:
+      cpu: 2
+      memory: 4GB
+      disk: 10GB
