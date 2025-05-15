@@ -9,12 +9,14 @@ import openpyxl
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores.utils import filter_complex_metadata
 from langchain.prompts import PromptTemplate
-from langchain_community.llms import Ollama
+from langchain_community.llms import GPT4All
 from langchain.schema.runnable import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.llms import Ollama
 
 class ChatData:
     def __init__(self):
@@ -30,7 +32,7 @@ class ChatData:
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=100)
         self.prompt = PromptTemplate.from_template(
             """
-            <s> [INST] You are a helpful assistant focused on analyzing Excel data and generating insights. Stick strictly to the provided context. 
+            You are a helpful assistant focused on analyzing Excel data and generating insights. Stick strictly to the provided context. 
             If the question cannot be answered with the given data, respond: "I cannot perform this analysis or the answer is not in the provided data."
             You can return answers as:
             - Plain text
@@ -38,13 +40,33 @@ class ChatData:
             - Python code for Streamlit charts (prefixed with "CODE:" and inside triple backticks).
             Question: {question}
             Context: {context}
-            Answer: [/INST] </s>
+            Answer:
             """
         )
 
-        # Initialize Ollama and embeddings
-        self.llm = Ollama(model="mistral")
-        self.embeddings = OllamaEmbeddings(model="mistral")
+        # Initialize Ollama services
+        try:
+            # Get Ollama host from environment or use default
+            ollama_host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+            
+            # Initialize embeddings and LLM
+            self.embeddings = OllamaEmbeddings(
+                model="nomic-embed-text",
+                base_url=ollama_host
+            )
+            
+            self.llm = Ollama(
+                model="tinyllama",
+                base_url=ollama_host,
+                temperature=0.5,
+                num_ctx=2048  # Increased context window for better Excel analysis
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to connect to Ollama at {ollama_host}. "
+                "Please ensure Ollama is running and the model is pulled. "
+                f"Error: {str(e)}"
+            )
 
         # Start self-ping loop (Render free-tier prevention)
         self.ping_url = os.environ.get("RENDER_EXTERNAL_URL")
@@ -81,6 +103,9 @@ class ChatData:
 
     def _initialize_vector_store(self, documents):
         try:
+            if not self.embeddings:
+                raise RuntimeError("Embeddings not initialized")
+                
             self.vector_store = Chroma.from_documents(
                 documents=documents,
                 embedding=self.embeddings,
@@ -117,60 +142,50 @@ class ChatData:
             if not isinstance(excel_file, io.BytesIO):
                 raise TypeError("Uploaded file must be a BytesIO object")
 
-            # Ensure file pointer is at the beginning
-            excel_file.seek(0)
-            
             if not self._is_excel_file(excel_file):
                 raise ValueError("The uploaded file is not a valid Excel file or is corrupted.")
 
-            # Reset file pointer to beginning again after validation
+            # Reset file pointer to beginning
             excel_file.seek(0)
             
-            try:
-                wb = openpyxl.load_workbook(excel_file, data_only=True, read_only=True)
-                sheets_to_process = wb.sheetnames
+            wb = openpyxl.load_workbook(excel_file, data_only=True, read_only=True)
+            sheets_to_process = wb.sheetnames
+            
+            if not sheets_to_process:
+                raise ValueError("The Excel file contains no sheets.")
                 
-                if not sheets_to_process:
-                    raise ValueError("The Excel file contains no sheets.")
+            docs = []
+
+            for sheet in sheets_to_process:
+                ws = wb[sheet]
+                rows = list(ws.iter_rows(values_only=True))
+                if not rows or not rows[0]:
+                    continue
+
+                headers = [str(h) for h in rows[0]]
+                if not headers:
+                    continue
                     
-                docs = []
-
-                for sheet in sheets_to_process:
-                    ws = wb[sheet]
-                    rows = list(ws.iter_rows(values_only=True))
-                    if not rows or not rows[0]:
+                for i, row in enumerate(rows[1:], start=2):
+                    if all(v is None for v in row):
                         continue
+                    row_data = dict(zip(headers, row))
+                    content = f"Sheet: {sheet}\nRow {i}\nData:\n{row_data}"
+                    docs.append(Document(page_content=content, metadata={"sheet": sheet}))
 
-                    headers = [str(h) for h in rows[0]]
-                    if not headers:
-                        continue
-                        
-                    for i, row in enumerate(rows[1:], start=2):
-                        if all(v is None for v in row):
-                            continue
-                        row_data = dict(zip(headers, row))
-                        content = f"Sheet: {sheet}\nRow {i}\nData:\n{row_data}"
-                        docs.append(Document(page_content=content, metadata={"sheet": sheet}))
+            if not docs:
+                raise ValueError("No valid data found in the Excel file. Please ensure the file contains at least one sheet with headers and data.")
 
-                if not docs:
-                    raise ValueError("No valid data found in the Excel file. Please ensure the file contains at least one sheet with headers and data.")
+            chunks = self.text_splitter.split_documents(docs)
+            chunks = filter_complex_metadata(chunks)
 
-                chunks = self.text_splitter.split_documents(docs)
-                chunks = filter_complex_metadata(chunks)
+            if self.vector_store is None:
+                self._initialize_vector_store(chunks)
+            else:
+                self.vector_store.add_documents(chunks)
+                self.vector_store.persist()
 
-                if self.vector_store is None:
-                    self._initialize_vector_store(chunks)
-                else:
-                    self.vector_store.add_documents(chunks)
-                    self.vector_store.persist()
-
-                self._create_retriever_and_chain()
-                
-            finally:
-                # Clean up workbook
-                if 'wb' in locals():
-                    wb.close()
-                
+            self._create_retriever_and_chain()
         except Exception as e:
             raise RuntimeError(f"Failed to ingest Excel file: {str(e)}")
 
