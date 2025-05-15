@@ -47,7 +47,8 @@ class ChatData:
             # Initialize embeddings (local model)
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2",
-                model_kwargs={'device': 'cpu'}
+                model_kwargs={'device': 'cpu'},
+                cache_folder="./model_cache"  # Add cache folder
             )
             
             # Initialize LLM (local model)
@@ -58,13 +59,14 @@ class ChatData:
                     'max_new_tokens': 512,
                     'temperature': 0.5,
                     'context_length': 2048
-                }
+                },
+                lib='avx2'  # Specify CPU instruction set
             )
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to initialize models. "
-                f"Error: {str(e)}"
-            )
+            print(f"Warning: Failed to initialize models: {str(e)}")
+            print("Attempting to continue with limited functionality...")
+            self.embeddings = None
+            self.llm = None
 
         # Start self-ping loop (Render free-tier prevention)
         self.ping_url = os.environ.get("RENDER_EXTERNAL_URL")
