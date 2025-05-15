@@ -45,6 +45,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) {
                 let errorMessage = data.detail || data.error || 'Failed to upload file';
                 
+                // Check for Ollama-related errors
+                if (errorMessage.includes('Could not connect to Ollama server')) {
+                    errorMessage = errorMessage.replace(/\n/g, '<br>');
+                    addMessage("System", `<div style="color: #ff4444; white-space: pre-line;">${errorMessage}</div>`);
+                    return;
+                }
+                
                 // Check for HuggingFace API errors
                 if (errorMessage.includes('HUGGINGFACE_API_KEY')) {
                     errorMessage = "Error: HuggingFace API key is not configured. Please set the HUGGINGFACE_API_KEY environment variable.";
