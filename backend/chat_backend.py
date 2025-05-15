@@ -47,8 +47,11 @@ class ChatData:
             # Initialize embeddings (local model)
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2",
-                model_kwargs={'device': 'cpu'},
-                cache_folder="./model_cache"  # Add cache folder
+                model_kwargs={
+                    'device': 'cpu',
+                    'torch_dtype': 'float32'  # Use float32 instead of float16
+                },
+                cache_folder="./model_cache"
             )
             
             # Initialize LLM (local model)
@@ -56,11 +59,12 @@ class ChatData:
                 model="TheBloke/Mistral-7B-v0.1-GGUF",
                 model_type="mistral",
                 config={
-                    'max_new_tokens': 512,
+                    'max_new_tokens': 256,  # Reduced from 512
                     'temperature': 0.5,
-                    'context_length': 2048
+                    'context_length': 1024,  # Reduced from 2048
+                    'gpu_layers': 0  # Force CPU only
                 },
-                lib='avx2'  # Specify CPU instruction set
+                lib='avx2'
             )
         except Exception as e:
             print(f"Warning: Failed to initialize models: {str(e)}")
