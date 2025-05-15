@@ -14,7 +14,7 @@ from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.llms import HuggingFaceHub
+from langchain_community.llms import CTransformers
 
 class ChatData:
     def __init__(self):
@@ -42,30 +42,27 @@ class ChatData:
             """
         )
 
-        # Initialize HuggingFace services
+        # Initialize models
         try:
-            # Get HuggingFace API key from environment
-            hf_api_key = os.environ.get("HUGGINGFACE_API_KEY")
-            if not hf_api_key:
-                raise RuntimeError(
-                    "HUGGINGFACE_API_KEY environment variable is not set. "
-                    "Please set it in your Render environment variables."
-                )
-            
-            # Initialize embeddings and LLM
+            # Initialize embeddings (local model)
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2",
                 model_kwargs={'device': 'cpu'}
             )
             
-            self.llm = HuggingFaceHub(
-                repo_id="google/flan-t5-base",
-                model_kwargs={"temperature": 0.5, "max_length": 512},
-                huggingfacehub_api_token=hf_api_key
+            # Initialize LLM (local model)
+            self.llm = CTransformers(
+                model="TheBloke/Mistral-7B-v0.1-GGUF",
+                model_type="mistral",
+                config={
+                    'max_new_tokens': 512,
+                    'temperature': 0.5,
+                    'context_length': 2048
+                }
             )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to initialize HuggingFace services. "
+                f"Failed to initialize models. "
                 f"Error: {str(e)}"
             )
 
