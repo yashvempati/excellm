@@ -6,8 +6,6 @@ services:
     envVars:
       - key: PORT
         value: 10000
-      - key: OLLAMA_HOST
-        value: http://localhost:11434
     autoDeploy: true
     plan: free
     resources:
