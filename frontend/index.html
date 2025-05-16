@@ -9,21 +9,25 @@
     <div class="container">
         <h1>Excel LLM Chat</h1>
 
-        <form id="uploadForm" action="javascript:void(0);">
-            <input type="file" id="fileInput" accept=".xlsx" />
-            <button type="submit">Upload Excel</button>
+        <form id="uploadForm">
+            <div class="form-group">
+                <input type="file" id="fileInput" accept=".xlsx" />
+                <button type="submit" class="primary-button">Upload Excel</button>
+            </div>
         </form>
 
         <div id="chatBox"></div>
 
-        <form id="askForm" action="javascript:void(0);">
-            <input type="text" id="questionInput" placeholder="Ask a question..." required />
-            <button type="submit">Ask</button>
+        <form id="askForm">
+            <div class="form-group">
+                <input type="text" id="questionInput" placeholder="Ask a question..." required />
+                <button type="submit" class="primary-button">Ask</button>
+            </div>
         </form>
 
-        <div class="buttons">
-            <button id="clearButton">Clear Chat</button>
-            <button id="exportButton">Export Chat</button>
+        <div class="button-group">
+            <button id="clearButton" class="secondary-button">Clear Chat</button>
+            <button id="exportButton" class="secondary-button">Export Chat</button>
         </div>
     </div>
 
