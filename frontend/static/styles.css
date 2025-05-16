@@ -4,6 +4,7 @@ body {
     display: flex;
     justify-content: center;
     padding: 20px;
+    margin: 0;
 }
 
 .container {
@@ -17,54 +18,89 @@ body {
 h1 {
     text-align: center;
     color: #222;
+    margin-bottom: 20px;
 }
 
 #chatBox {
     background: #eee;
-    padding: 10px;
+    padding: 15px;
     height: 300px;
     overflow-y: auto;
     margin: 15px 0;
     border-radius: 8px;
     font-size: 14px;
     line-height: 1.4;
+    border: 1px solid #ddd;
 }
 
-form, .buttons {
+.form-group {
     display: flex;
-    margin-bottom: 10px;
     gap: 10px;
+    margin-bottom: 15px;
+}
+
+.button-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
 }
 
 input[type="text"], input[type="file"] {
     flex: 1;
-    padding: 8px;
+    padding: 10px;
     border: 1px solid #ccc;
     border-radius: 6px;
+    font-size: 14px;
+}
+
+input[type="file"] {
+    padding: 8px;
+    background: #f8f8f8;
 }
 
 button {
-    padding: 8px 12px;
+    padding: 10px 15px;
     cursor: pointer;
-    background-color: black;
-    color: yellow;
     border: none;
     border-radius: 6px;
-    transition: background-color 0.2s ease;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
 }
 
-button:hover {
+.primary-button {
+    background-color: #000;
+    color: #ffd700;
+}
+
+.primary-button:hover {
     background-color: #333;
+    transform: translateY(-1px);
 }
 
-.buttons button {
-    flex: 1;
+.secondary-button {
+    background-color: #f0f0f0;
+    color: #333;
+    border: 1px solid #ddd;
+}
+
+.secondary-button:hover {
+    background-color: #e0e0e0;
+    transform: translateY(-1px);
 }
 
 /* Message styling */
+#chatBox div {
+    margin-bottom: 8px;
+    padding: 8px;
+    border-radius: 4px;
+    background: white;
+}
+
 #chatBox div b {
     display: inline-block;
     min-width: 60px;
+    font-weight: 600;
 }
 
 #chatBox div b::after {
@@ -72,14 +108,14 @@ button:hover {
     margin-right: 4px;
 }
 
-#chatBox div b {
-    color: black;
-}
-
 #chatBox div b.system {
-    color: goldenrod;
+    color: #b8860b;
 }
 
 #chatBox div b.bot {
-    color: gray;
+    color: #666;
+}
+
+#chatBox div b.you {
+    color: #0066cc;
 }
