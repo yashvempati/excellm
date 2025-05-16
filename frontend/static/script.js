@@ -45,18 +45,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) {
                 let errorMessage = data.detail || data.error || 'Failed to upload file';
                 
-                // Check for Ollama-related errors
-                if (errorMessage.includes('Could not connect to Ollama server')) {
-                    errorMessage = errorMessage.replace(/\n/g, '<br>');
-                    addMessage("System", `<div style="color: #ff4444; white-space: pre-line;">${errorMessage}</div>`);
-                    return;
-                }
-                
                 // Check for HuggingFace API errors
-                if (errorMessage.includes('HUGGINGFACE_API_KEY')) {
-                    errorMessage = "Error: HuggingFace API key is not configured. Please set the HUGGINGFACE_API_KEY environment variable.";
+                if (errorMessage.includes('HuggingFace API key')) {
+                    errorMessage = "Error: HuggingFace API key is not configured. Please set the HF_API_KEY environment variable. You can get an API key from https://huggingface.co/settings/tokens";
+                } else if (errorMessage.includes('Invalid HuggingFace API key')) {
+                    errorMessage = "Error: Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens";
+                } else if (errorMessage.includes('Access denied')) {
+                    errorMessage = "Error: Access denied to HuggingFace API. Please check if your API key has the correct permissions.";
                 } else if (errorMessage.includes('HuggingFace')) {
-                    errorMessage = "Error: Failed to connect to HuggingFace services. Please check the server configuration.";
+                    errorMessage = "Error: Failed to connect to HuggingFace services. Please check your internet connection and API key configuration.";
                 }
                 
                 throw new Error(errorMessage);
