@@ -56,12 +56,13 @@ async def upload_file(file: UploadFile = File(...)):
         excel_stream = io.BytesIO(file_content)
         excel_stream.seek(0)
         
-        # Try to validate if it's a valid Excel file
+        # Try to validate and process the Excel file
         try:
-            chat_engine.ingest_excel(excel_stream)
+            rows_processed = chat_engine.ingest_excel(excel_stream)
             return JSONResponse({
-                "message": f"Successfully ingested {file.filename}",
-                "status": "success"
+                "message": f"Successfully processed {rows_processed} rows from {file.filename}",
+                "status": "success",
+                "rows_processed": rows_processed
             })
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
