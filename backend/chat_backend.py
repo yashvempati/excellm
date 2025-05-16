@@ -15,28 +15,50 @@ from langchain.schema.runnable import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
 HF_API_KEY = os.environ.get("HF_API_KEY")
+if not HF_API_KEY:
+    raise RuntimeError(
+        "HuggingFace API key not found. Please set the HF_API_KEY environment variable. "
+        "You can get an API key from https://huggingface.co/settings/tokens"
+    )
+
 HF_LLM_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
 HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
 def hf_generate(prompt):
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     payload = {"inputs": prompt}
-    response = requests.post(HF_LLM_URL, headers=headers, json=payload)
-    response.raise_for_status()
-    result = response.json()
-    if isinstance(result, list) and "generated_text" in result[0]:
-        return result[0]["generated_text"]
-    elif isinstance(result, dict) and "generated_text" in result:
-        return result["generated_text"]
-    else:
-        return str(result)
+    try:
+        response = requests.post(HF_LLM_URL, headers=headers, json=payload)
+        response.raise_for_status()
+        result = response.json()
+        if isinstance(result, list) and "generated_text" in result[0]:
+            return result[0]["generated_text"]
+        elif isinstance(result, dict) and "generated_text" in result:
+            return result["generated_text"]
+        else:
+            return str(result)
+    except requests.exceptions.RequestException as e:
+        if response.status_code == 401:
+            raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
+        elif response.status_code == 403:
+            raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
+        else:
+            raise RuntimeError(f"Error calling HuggingFace API: {str(e)}")
 
 def hf_embed(texts):
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     payload = {"inputs": texts}
-    response = requests.post(HF_EMBED_URL, headers=headers, json=payload)
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.post(HF_EMBED_URL, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        if response.status_code == 401:
+            raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
+        elif response.status_code == 403:
+            raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
+        else:
+            raise RuntimeError(f"Error calling HuggingFace API: {str(e)}")
 
 class ChatData:
     def __init__(self):
