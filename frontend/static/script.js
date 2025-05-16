@@ -56,10 +56,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     errorMessage = "Error: Failed to connect to HuggingFace services. Please check your internet connection and API key configuration.";
                 }
                 
+                // Check for Excel-specific errors
+                if (errorMessage.includes('not a valid Excel file')) {
+                    errorMessage = "Error: The uploaded file is not a valid Excel file. Please ensure you're uploading a valid .xlsx file.";
+                } else if (errorMessage.includes('No valid data found')) {
+                    errorMessage = "Error: No valid data found in the Excel file. Please ensure the file contains:\n1. At least one sheet\n2. Headers in the first row\n3. Data in subsequent rows";
+                } else if (errorMessage.includes('contains no sheets')) {
+                    errorMessage = "Error: The Excel file contains no sheets. Please ensure the file has at least one sheet with data.";
+                }
+                
                 throw new Error(errorMessage);
             }
             
-            addMessage("System", data.message || "File uploaded successfully!");
+            // Show success message with number of rows processed
+            const rowsProcessed = data.rows_processed || 0;
+            addMessage("System", `${data.message}\nProcessed ${rowsProcessed} rows of data.`);
             
             // Clear the file input after successful upload
             fileInput.value = '';
