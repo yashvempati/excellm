@@ -13,8 +13,30 @@ from langchain_community.vectorstores.utils import filter_complex_metadata
 from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.llms import CTransformers
+
+HF_API_KEY = os.environ.get("HF_API_KEY")
+HF_LLM_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
+HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+
+def hf_generate(prompt):
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+    payload = {"inputs": prompt}
+    response = requests.post(HF_LLM_URL, headers=headers, json=payload)
+    response.raise_for_status()
+    result = response.json()
+    if isinstance(result, list) and "generated_text" in result[0]:
+        return result[0]["generated_text"]
+    elif isinstance(result, dict) and "generated_text" in result:
+        return result["generated_text"]
+    else:
+        return str(result)
+
+def hf_embed(texts):
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+    payload = {"inputs": texts}
+    response = requests.post(HF_EMBED_URL, headers=headers, json=payload)
+    response.raise_for_status()
+    return response.json()
 
 class ChatData:
     def __init__(self):
@@ -42,37 +64,6 @@ class ChatData:
             """
         )
 
-        # Initialize models
-        try:
-            # Initialize embeddings (local model)
-            self.embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                model_kwargs={
-                    'device': 'cpu',
-                    'torch_dtype': 'float32'  # Use float32 instead of float16
-                },
-                cache_folder="./model_cache"
-            )
-            
-            # Initialize LLM (local model)
-            self.llm = CTransformers(
-                model="TheBloke/Mistral-7B-v0.1-GGUF",
-                model_type="mistral",
-                config={
-                    'max_new_tokens': 256,  # Reduced from 512
-                    'temperature': 0.5,
-                    'context_length': 1024,  # Reduced from 2048
-                    'gpu_layers': 0  # Force CPU only
-                },
-                lib='avx2'
-            )
-        except Exception as e:
-            print(f"Warning: Failed to initialize models: {str(e)}")
-            print("Attempting to continue with limited functionality...")
-            self.embeddings = None
-            self.llm = None
-
-        # Start self-ping loop (Render free-tier prevention)
         self.ping_url = os.environ.get("RENDER_EXTERNAL_URL")
         self.keep_awake = True
         self._start_self_pinger()
@@ -107,12 +98,14 @@ class ChatData:
 
     def _initialize_vector_store(self, documents):
         try:
-            if not self.embeddings:
-                raise RuntimeError("Embeddings not initialized")
-                
+            # Use HuggingFace embeddings for all documents
+            texts = [doc.page_content for doc in documents]
+            embeddings = hf_embed(texts)
+            for i, doc in enumerate(documents):
+                doc.embedding = embeddings[i]
             self.vector_store = Chroma.from_documents(
                 documents=documents,
-                embedding=self.embeddings,
+                embedding_function=lambda docs: hf_embed([d.page_content for d in docs]),
                 persist_directory=self.persist_directory
             )
             self.vector_store.persist()
@@ -121,74 +114,54 @@ class ChatData:
 
     def _is_excel_file(self, file_obj):
         try:
-            # Save current position
             current_pos = file_obj.tell()
-            
-            # Try to load the workbook
             try:
                 wb = openpyxl.load_workbook(file_obj, read_only=True)
-                # Check if it has any sheets
                 if not wb.sheetnames:
                     return False
             except Exception:
                 return False
             finally:
-                # Reset file pointer to original position
                 file_obj.seek(current_pos)
-            
             return True
         except Exception:
             return False
 
     def ingest_excel(self, excel_file):
         try:
-            # Check type and content
             if not isinstance(excel_file, io.BytesIO):
                 raise TypeError("Uploaded file must be a BytesIO object")
-
             if not self._is_excel_file(excel_file):
                 raise ValueError("The uploaded file is not a valid Excel file or is corrupted.")
-
-            # Reset file pointer to beginning
             excel_file.seek(0)
-            
             wb = openpyxl.load_workbook(excel_file, data_only=True, read_only=True)
             sheets_to_process = wb.sheetnames
-            
             if not sheets_to_process:
                 raise ValueError("The Excel file contains no sheets.")
-                
             docs = []
-
             for sheet in sheets_to_process:
                 ws = wb[sheet]
                 rows = list(ws.iter_rows(values_only=True))
                 if not rows or not rows[0]:
                     continue
-
                 headers = [str(h) for h in rows[0]]
                 if not headers:
                     continue
-                    
                 for i, row in enumerate(rows[1:], start=2):
                     if all(v is None for v in row):
                         continue
                     row_data = dict(zip(headers, row))
                     content = f"Sheet: {sheet}\nRow {i}\nData:\n{row_data}"
                     docs.append(Document(page_content=content, metadata={"sheet": sheet}))
-
             if not docs:
                 raise ValueError("No valid data found in the Excel file. Please ensure the file contains at least one sheet with headers and data.")
-
             chunks = self.text_splitter.split_documents(docs)
             chunks = filter_complex_metadata(chunks)
-
             if self.vector_store is None:
                 self._initialize_vector_store(chunks)
             else:
                 self.vector_store.add_documents(chunks)
                 self.vector_store.persist()
-
             self._create_retriever_and_chain()
         except Exception as e:
             raise RuntimeError(f"Failed to ingest Excel file: {str(e)}")
@@ -199,22 +172,22 @@ class ChatData:
                 search_type="similarity_score_threshold",
                 search_kwargs={"k": 3, "score_threshold": 0.5}
             )
-            self.chain = (
-                {"context": self.retriever, "question": RunnablePassthrough()}
-                | self.prompt
-                | self.llm
-                | StrOutputParser()
-            )
+            self.chain = self._chain
+
+    def _chain(self, question):
+        # Retrieve context
+        docs = self.retriever.get_relevant_documents(question)
+        context = "\n".join([doc.page_content for doc in docs])
+        prompt = self.prompt.format(question=question, context=context)
+        return hf_generate(prompt)
 
     def ask(self, query: str):
         if not self.chain:
             return "Please, add an Excel file first."
-
         try:
-            response = self.chain.invoke(query).strip()
+            response = self.chain(query).strip()
             self.chat_history.append({"question": query, "answer": response})
-
-            if response.startswith("```python") and response.endswith("```"):
+            if response.startswith("```python") and response.endswith("````"):
                 code = response[9:-3].strip()
                 return f"CODE:\n{code}"
             elif response.startswith("|") and "\n|" in response:
@@ -238,7 +211,6 @@ class ChatData:
     def export_chat_history(self):
         if not self.chat_history:
             return "No chat history available."
-        
         try:
             lines = []
             for entry in self.chat_history:
