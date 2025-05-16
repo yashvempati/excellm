@@ -137,7 +137,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function addMessage(sender, text) {
         const message = document.createElement('div');
-        message.innerHTML = `<b>${sender}:</b> ${text}`;
+        const senderClass = sender.toLowerCase();
+        message.innerHTML = `<b class="${senderClass}">${sender}:</b> ${text}`;
         chatBox.appendChild(message);
         chatBox.scrollTop = chatBox.scrollHeight;
     }
