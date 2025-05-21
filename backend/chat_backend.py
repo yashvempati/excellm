@@ -30,24 +30,68 @@ def validate_hf_api_key():
             "You can get an API key from https://huggingface.co/settings/tokens"
         )
     
-    # Test the API key with a simple request
+    # Test both the API key and the model endpoints
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+    
+    # First test the API key with the whoami endpoint
     try:
-        response = requests.get("https://huggingface.co/api/whoami", headers=headers)
+        response = requests.get("https://huggingface.co/api/whoami", headers=headers, timeout=10)
         response.raise_for_status()
         logger.info("Successfully validated HuggingFace API key")
-        return HF_API_KEY
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to validate HuggingFace API key: {str(e)}")
-        if response.status_code == 401:
-            raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
-        elif response.status_code == 403:
-            raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
-        else:
-            raise RuntimeError(f"Failed to connect to HuggingFace services: {str(e)}")
+        if hasattr(e.response, 'status_code'):
+            if e.response.status_code == 401:
+                raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
+            elif e.response.status_code == 403:
+                raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
+        raise RuntimeError(f"Failed to connect to HuggingFace services: {str(e)}")
+    
+    # Then test the model endpoints
+    try:
+        # Test LLM endpoint
+        llm_response = requests.post(
+            HF_LLM_URL,
+            headers=headers,
+            json={"inputs": "test"},
+            timeout=10
+        )
+        llm_response.raise_for_status()
+        logger.info("Successfully validated LLM endpoint")
+        
+        # Test embedding endpoint
+        embed_response = requests.post(
+            HF_EMBED_URL,
+            headers=headers,
+            json={"inputs": ["test"]},
+            timeout=10
+        )
+        embed_response.raise_for_status()
+        logger.info("Successfully validated embedding endpoint")
+        
+        return HF_API_KEY
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to validate model endpoints: {str(e)}")
+        if hasattr(e.response, 'status_code'):
+            if e.response.status_code == 401:
+                raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
+            elif e.response.status_code == 403:
+                raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
+            elif e.response.status_code == 503:
+                raise RuntimeError("HuggingFace services are currently unavailable. Please try again later.")
+        raise RuntimeError(f"Failed to connect to HuggingFace model services: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error during API validation: {str(e)}")
+        raise RuntimeError(f"Failed to validate HuggingFace services: {str(e)}")
 
 # Validate API key at startup
-HF_API_KEY = validate_hf_api_key()
+try:
+    HF_API_KEY = validate_hf_api_key()
+    logger.info("Successfully initialized HuggingFace API connection")
+except Exception as e:
+    logger.error(f"Failed to initialize HuggingFace API: {str(e)}")
+    raise
+
 HF_LLM_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
 HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
