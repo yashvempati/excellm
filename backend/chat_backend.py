@@ -20,13 +20,34 @@ from langchain_core.output_parsers import StrOutputParser
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-HF_API_KEY = os.environ.get("HF_API_KEY")
-if not HF_API_KEY:
-    raise RuntimeError(
-        "HuggingFace API key not found. Please set the HF_API_KEY environment variable. "
-        "You can get an API key from https://huggingface.co/settings/tokens"
-    )
+def validate_hf_api_key():
+    """Validate the HuggingFace API key and test the connection."""
+    HF_API_KEY = os.environ.get("HF_API_KEY")
+    if not HF_API_KEY:
+        logger.error("HuggingFace API key not found in environment variables")
+        raise RuntimeError(
+            "HuggingFace API key not found. Please set the HF_API_KEY environment variable. "
+            "You can get an API key from https://huggingface.co/settings/tokens"
+        )
+    
+    # Test the API key with a simple request
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+    try:
+        response = requests.get("https://huggingface.co/api/whoami", headers=headers)
+        response.raise_for_status()
+        logger.info("Successfully validated HuggingFace API key")
+        return HF_API_KEY
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to validate HuggingFace API key: {str(e)}")
+        if response.status_code == 401:
+            raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
+        elif response.status_code == 403:
+            raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
+        else:
+            raise RuntimeError(f"Failed to connect to HuggingFace services: {str(e)}")
 
+# Validate API key at startup
+HF_API_KEY = validate_hf_api_key()
 HF_LLM_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
 HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
