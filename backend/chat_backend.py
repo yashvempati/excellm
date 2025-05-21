@@ -6,6 +6,8 @@ import threading
 import time
 import requests
 import pandas as pd
+import traceback
+import logging
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
@@ -13,6 +15,10 @@ from langchain_community.vectorstores.utils import filter_complex_metadata
 from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 HF_API_KEY = os.environ.get("HF_API_KEY")
 if not HF_API_KEY:
@@ -142,7 +148,19 @@ class ChatData:
 
             # Read all sheets from the Excel file
             excel_file.seek(0)
-            excel_data = pd.read_excel(excel_file, sheet_name=None)
+            logger.info("Attempting to read Excel file...")
+            
+            try:
+                excel_data = pd.read_excel(
+                    excel_file,
+                    sheet_name=None,
+                    engine='openpyxl',
+                    dtype=str  # Force all columns to string type
+                )
+            except Exception as e:
+                logger.error(f"Error reading Excel file: {str(e)}")
+                logger.error(traceback.format_exc())
+                raise ValueError(f"Failed to read Excel file: {str(e)}")
             
             if not excel_data:
                 raise ValueError("No data found in the Excel file")
@@ -152,49 +170,64 @@ class ChatData:
 
             # Process each sheet
             for sheet_name, df in excel_data.items():
-                if df.empty:
-                    continue
-
-                # Clean column names
-                df.columns = [str(col).strip() for col in df.columns]
-                
-                # Remove completely empty rows
-                df = df.dropna(how='all')
+                logger.info(f"Processing sheet: {sheet_name}")
                 
                 if df.empty:
+                    logger.info(f"Skipping empty sheet: {sheet_name}")
                     continue
 
-                # Convert all data to strings and clean
-                df = df.astype(str)
-                df = df.apply(lambda x: x.str.strip())
-                
-                # Create documents for each row
-                for idx, row in df.iterrows():
-                    # Skip rows where all values are empty strings
-                    if all(val == '' for val in row):
-                        continue
-                        
-                    # Create row data dictionary
-                    row_data = {col: val for col, val in row.items() if val != ''}
+                try:
+                    # Clean column names
+                    df.columns = [str(col).strip() for col in df.columns]
                     
-                    if row_data:
-                        content = (
-                            f"Sheet: {sheet_name}\n"
-                            f"Row {idx + 2}\n"  # +2 because pandas is 0-based and we want to account for header
-                            f"Data:\n{row_data}"
-                        )
-                        all_docs.append(Document(
-                            page_content=content,
-                            metadata={
-                                "sheet": sheet_name,
-                                "row": idx + 2,
-                                "headers": list(df.columns)
-                            }
-                        ))
-                        total_rows += 1
+                    # Remove completely empty rows
+                    df = df.dropna(how='all')
+                    
+                    if df.empty:
+                        logger.info(f"No data in sheet after cleaning: {sheet_name}")
+                        continue
+
+                    # Convert all data to strings and clean
+                    df = df.astype(str)
+                    df = df.apply(lambda x: x.str.strip())
+                    
+                    # Create documents for each row
+                    for idx, row in df.iterrows():
+                        try:
+                            # Skip rows where all values are empty strings
+                            if all(val == '' for val in row):
+                                continue
+                                
+                            # Create row data dictionary
+                            row_data = {col: val for col, val in row.items() if val != ''}
+                            
+                            if row_data:
+                                content = (
+                                    f"Sheet: {sheet_name}\n"
+                                    f"Row {idx + 2}\n"  # +2 because pandas is 0-based and we want to account for header
+                                    f"Data:\n{row_data}"
+                                )
+                                all_docs.append(Document(
+                                    page_content=content,
+                                    metadata={
+                                        "sheet": sheet_name,
+                                        "row": idx + 2,
+                                        "headers": list(df.columns)
+                                    }
+                                ))
+                                total_rows += 1
+                        except Exception as e:
+                            logger.error(f"Error processing row {idx} in sheet {sheet_name}: {str(e)}")
+                            continue
+
+                except Exception as e:
+                    logger.error(f"Error processing sheet {sheet_name}: {str(e)}")
+                    continue
 
             if not all_docs:
                 raise ValueError("No valid data found in the Excel file")
+
+            logger.info(f"Successfully processed {total_rows} rows from {len(excel_data)} sheets")
 
             # Split documents into chunks
             chunks = self.text_splitter.split_documents(all_docs)
@@ -202,8 +235,10 @@ class ChatData:
 
             # Initialize or update vector store
             if self.vector_store is None:
+                logger.info("Initializing new vector store...")
                 self._initialize_vector_store(chunks)
             else:
+                logger.info("Updating existing vector store...")
                 self.vector_store.add_documents(chunks)
                 self.vector_store.persist()
 
@@ -212,10 +247,15 @@ class ChatData:
 
         except Exception as e:
             error_msg = str(e)
+            logger.error(f"Error in ingest_excel: {error_msg}")
+            logger.error(traceback.format_exc())
+            
             if "No data found" in error_msg:
                 raise ValueError("The Excel file contains no data")
             elif "No valid data" in error_msg:
                 raise ValueError("No valid data could be extracted from the Excel file")
+            elif "Failed to read Excel file" in error_msg:
+                raise ValueError(error_msg)
             else:
                 raise RuntimeError(f"Failed to process Excel file: {error_msg}")
 
