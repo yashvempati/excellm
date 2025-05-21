@@ -83,6 +83,16 @@ async def upload_file(file: UploadFile = File(...)):
             # Log the error for debugging
             print(f"Excel processing error: {str(ve)}")
             raise HTTPException(status_code=400, detail=str(ve))
+        except RuntimeError as re:
+            # Handle HuggingFace API errors
+            error_msg = str(re)
+            if "HuggingFace API key" in error_msg or "Failed to connect to HuggingFace services" in error_msg:
+                print(f"HuggingFace API error: {error_msg}")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Failed to connect to AI services. Please check your API key configuration and internet connection."
+                )
+            raise HTTPException(status_code=500, detail=error_msg)
         except Exception as e:
             # Log the error for debugging
             print(f"Unexpected error during Excel processing: {str(e)}")
