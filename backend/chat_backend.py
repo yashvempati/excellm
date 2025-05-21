@@ -30,53 +30,84 @@ def validate_hf_api_key():
             "You can get an API key from https://huggingface.co/settings/tokens"
         )
     
+    # Log the first few characters of the API key for debugging (safely)
+    masked_key = HF_API_KEY[:4] + "..." + HF_API_KEY[-4:] if len(HF_API_KEY) > 8 else "***"
+    logger.info(f"Attempting to validate HuggingFace API key: {masked_key}")
+    
     # Test both the API key and the model endpoints
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     
     # First test the API key with the whoami endpoint
     try:
-        response = requests.get("https://huggingface.co/api/whoami", headers=headers, timeout=10)
+        logger.info("Testing API key with whoami endpoint...")
+        response = requests.get(
+            "https://huggingface.co/api/whoami",
+            headers=headers,
+            timeout=10
+        )
+        logger.info(f"Whoami response status: {response.status_code}")
+        logger.info(f"Whoami response content: {response.text[:200]}")  # Log first 200 chars of response
         response.raise_for_status()
         logger.info("Successfully validated HuggingFace API key")
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to validate HuggingFace API key: {str(e)}")
-        if hasattr(e.response, 'status_code'):
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"Response status code: {e.response.status_code}")
+            logger.error(f"Response content: {e.response.text[:200]}")  # Log first 200 chars of error response
             if e.response.status_code == 401:
-                raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
+                raise RuntimeError(
+                    "Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens. "
+                    "Make sure the key is active and has the correct permissions."
+                )
             elif e.response.status_code == 403:
-                raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
+                raise RuntimeError(
+                    "Access denied. Please check if your HuggingFace API key has the correct permissions. "
+                    "You may need to accept the terms of use at https://huggingface.co/settings/tokens"
+                )
         raise RuntimeError(f"Failed to connect to HuggingFace services: {str(e)}")
     
     # Then test the model endpoints
     try:
         # Test LLM endpoint
+        logger.info("Testing LLM endpoint...")
         llm_response = requests.post(
             HF_LLM_URL,
             headers=headers,
             json={"inputs": "test"},
             timeout=10
         )
+        logger.info(f"LLM response status: {llm_response.status_code}")
         llm_response.raise_for_status()
         logger.info("Successfully validated LLM endpoint")
         
         # Test embedding endpoint
+        logger.info("Testing embedding endpoint...")
         embed_response = requests.post(
             HF_EMBED_URL,
             headers=headers,
             json={"inputs": ["test"]},
             timeout=10
         )
+        logger.info(f"Embedding response status: {embed_response.status_code}")
         embed_response.raise_for_status()
         logger.info("Successfully validated embedding endpoint")
         
         return HF_API_KEY
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to validate model endpoints: {str(e)}")
-        if hasattr(e.response, 'status_code'):
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"Response status code: {e.response.status_code}")
+            logger.error(f"Response content: {e.response.text[:200]}")  # Log first 200 chars of error response
             if e.response.status_code == 401:
-                raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
+                raise RuntimeError(
+                    "Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens. "
+                    "Make sure the key is active and has the correct permissions."
+                )
             elif e.response.status_code == 403:
-                raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
+                raise RuntimeError(
+                    "Access denied. Please check if your HuggingFace API key has the correct permissions. "
+                    "You may need to accept the terms of use at https://huggingface.co/settings/tokens"
+                )
             elif e.response.status_code == 503:
                 raise RuntimeError("HuggingFace services are currently unavailable. Please try again later.")
         raise RuntimeError(f"Failed to connect to HuggingFace model services: {str(e)}")
@@ -86,6 +117,7 @@ def validate_hf_api_key():
 
 # Validate API key at startup
 try:
+    logger.info("Starting HuggingFace API validation...")
     HF_API_KEY = validate_hf_api_key()
     logger.info("Successfully initialized HuggingFace API connection")
 except Exception as e:
