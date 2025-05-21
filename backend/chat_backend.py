@@ -5,7 +5,7 @@ import shutil
 import threading
 import time
 import requests
-import openpyxl
+import pandas as pd
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
@@ -134,162 +134,90 @@ class ChatData:
         except Exception as e:
             raise RuntimeError(f"Failed to initialize vector store: {str(e)}")
 
-    def _is_excel_file(self, file_obj):
-        try:
-            current_pos = file_obj.tell()
-            try:
-                wb = openpyxl.load_workbook(file_obj, read_only=True)
-                if not wb.sheetnames:
-                    return False
-                # Try to read the first sheet to validate it's a proper Excel file
-                ws = wb[wb.sheetnames[0]]
-                next(ws.iter_rows(values_only=True), None)  # Try to read first row
-                return True
-            except Exception as e:
-                print(f"Excel validation error: {str(e)}")
-                return False
-            finally:
-                file_obj.seek(current_pos)
-        except Exception as e:
-            print(f"File validation error: {str(e)}")
-            return False
-
-    def _validate_excel_data(self, wb):
-        """Validate Excel workbook structure and content."""
-        if not wb.sheetnames:
-            raise ValueError("The Excel file contains no sheets.")
-        
-        valid_sheets = []
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            rows = list(ws.iter_rows(values_only=True))
-            
-            # Skip empty sheets
-            if not rows:
-                continue
-                
-            # Validate headers
-            headers = [str(h).strip() for h in rows[0] if h is not None]
-            if not headers:
-                continue
-                
-            # Check for data rows
-            has_data = False
-            for row in rows[1:]:
-                if any(cell is not None for cell in row):
-                    has_data = True
-                    break
-            
-            if has_data:
-                valid_sheets.append((sheet_name, headers))
-        
-        if not valid_sheets:
-            raise ValueError(
-                "No valid data found in the Excel file. Please ensure the file contains:\n"
-                "1. At least one sheet\n"
-                "2. Headers in the first row\n"
-                "3. Data in subsequent rows"
-            )
-        
-        return valid_sheets
-
-    def _process_sheet(self, ws, sheet_name, headers):
-        """Process a single sheet and return Document objects."""
-        docs = []
-        for i, row in enumerate(ws.iter_rows(values_only=True), start=1):
-            if i == 1:  # Skip header row
-                continue
-                
-            # Skip empty rows
-            if all(v is None for v in row):
-                continue
-                
-            # Create row data dictionary
-            row_data = {}
-            for header, value in zip(headers, row):
-                if value is not None:
-                    # Convert value to string and clean it
-                    if isinstance(value, (int, float)):
-                        value = str(value).strip()
-                    elif isinstance(value, str):
-                        value = value.strip()
-                    else:
-                        value = str(value).strip()
-                    row_data[header] = value
-            
-            if row_data:  # Only add non-empty rows
-                content = (
-                    f"Sheet: {sheet_name}\n"
-                    f"Row {i}\n"
-                    f"Data:\n{row_data}"
-                )
-                docs.append(Document(
-                    page_content=content,
-                    metadata={
-                        "sheet": sheet_name,
-                        "row": i,
-                        "headers": headers
-                    }
-                ))
-        
-        return docs
-
     def ingest_excel(self, excel_file):
-        """Ingest Excel file with improved error handling and data processing."""
+        """Ingest Excel file using pandas for reliable processing."""
         try:
             if not isinstance(excel_file, io.BytesIO):
                 raise TypeError("Uploaded file must be a BytesIO object")
-            
-            if not self._is_excel_file(excel_file):
-                raise ValueError(
-                    "The uploaded file is not a valid Excel file or is corrupted. "
-                    "Please ensure you're uploading a valid .xlsx file."
-                )
-            
+
+            # Read all sheets from the Excel file
             excel_file.seek(0)
-            wb = openpyxl.load_workbook(excel_file, data_only=True, read_only=True)
+            excel_data = pd.read_excel(excel_file, sheet_name=None)
             
-            # Validate Excel structure and get valid sheets
-            valid_sheets = self._validate_excel_data(wb)
-            
-            # Process each valid sheet
+            if not excel_data:
+                raise ValueError("No data found in the Excel file")
+
             all_docs = []
-            for sheet_name, headers in valid_sheets:
-                ws = wb[sheet_name]
-                sheet_docs = self._process_sheet(ws, sheet_name, headers)
-                all_docs.extend(sheet_docs)
-            
+            total_rows = 0
+
+            # Process each sheet
+            for sheet_name, df in excel_data.items():
+                if df.empty:
+                    continue
+
+                # Clean column names
+                df.columns = [str(col).strip() for col in df.columns]
+                
+                # Remove completely empty rows
+                df = df.dropna(how='all')
+                
+                if df.empty:
+                    continue
+
+                # Convert all data to strings and clean
+                df = df.astype(str)
+                df = df.apply(lambda x: x.str.strip())
+                
+                # Create documents for each row
+                for idx, row in df.iterrows():
+                    # Skip rows where all values are empty strings
+                    if all(val == '' for val in row):
+                        continue
+                        
+                    # Create row data dictionary
+                    row_data = {col: val for col, val in row.items() if val != ''}
+                    
+                    if row_data:
+                        content = (
+                            f"Sheet: {sheet_name}\n"
+                            f"Row {idx + 2}\n"  # +2 because pandas is 0-based and we want to account for header
+                            f"Data:\n{row_data}"
+                        )
+                        all_docs.append(Document(
+                            page_content=content,
+                            metadata={
+                                "sheet": sheet_name,
+                                "row": idx + 2,
+                                "headers": list(df.columns)
+                            }
+                        ))
+                        total_rows += 1
+
             if not all_docs:
-                raise ValueError("No valid data could be extracted from the Excel file.")
-            
+                raise ValueError("No valid data found in the Excel file")
+
             # Split documents into chunks
             chunks = self.text_splitter.split_documents(all_docs)
             chunks = filter_complex_metadata(chunks)
-            
+
             # Initialize or update vector store
             if self.vector_store is None:
                 self._initialize_vector_store(chunks)
             else:
                 self.vector_store.add_documents(chunks)
                 self.vector_store.persist()
-            
+
             self._create_retriever_and_chain()
-            
-            return len(all_docs)  # Return number of rows processed
-            
+            return total_rows
+
         except Exception as e:
             error_msg = str(e)
-            if "not a valid Excel file" in error_msg:
-                raise ValueError(error_msg)
+            if "No data found" in error_msg:
+                raise ValueError("The Excel file contains no data")
             elif "No valid data" in error_msg:
-                raise ValueError(error_msg)
+                raise ValueError("No valid data could be extracted from the Excel file")
             else:
                 raise RuntimeError(f"Failed to process Excel file: {error_msg}")
-        finally:
-            try:
-                wb.close()
-            except:
-                pass
 
     def _create_retriever_and_chain(self):
         if self.vector_store:
