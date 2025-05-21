@@ -21,6 +21,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configure maximum file size (50MB)
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB in bytes
+
 # Load ChatData once at startup
 chat_engine = ChatData()
 
@@ -47,8 +50,20 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Only .xlsx files are allowed")
     
     try:
-        # Read file content
-        file_content = await file.read()
+        # Check file size
+        file_size = 0
+        file_content = bytearray()
+        
+        # Read file in chunks to handle large files
+        while chunk := await file.read(8192):  # 8KB chunks
+            file_size += len(chunk)
+            if file_size > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File too large. Maximum size is {MAX_FILE_SIZE/1024/1024}MB"
+                )
+            file_content.extend(chunk)
+        
         if not file_content:
             raise HTTPException(status_code=400, detail="Empty file provided")
             
@@ -65,15 +80,23 @@ async def upload_file(file: UploadFile = File(...)):
                 "rows_processed": rows_processed
             })
         except ValueError as ve:
+            # Log the error for debugging
+            print(f"Excel processing error: {str(ve)}")
             raise HTTPException(status_code=400, detail=str(ve))
         except Exception as e:
+            # Log the error for debugging
+            print(f"Unexpected error during Excel processing: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Error processing Excel file: {str(e)}")
         finally:
             # Clean up
             excel_stream.close()
             await file.close()
             
+    except HTTPException:
+        raise
     except Exception as e:
+        # Log the error for debugging
+        print(f"File upload error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error with file upload: {str(e)}")
 
 @app.post("/ask/")
