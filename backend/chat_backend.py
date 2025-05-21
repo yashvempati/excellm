@@ -37,7 +37,7 @@ def validate_hf_api_key():
     # Test both the API key and the model endpoints
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     
-    # First test the API key with the whoami endpoint
+    # First test the API key with the whoami endpoint to check permissions
     try:
         logger.info("Testing API key with whoami endpoint...")
         response = requests.get(
@@ -46,23 +46,48 @@ def validate_hf_api_key():
             timeout=10
         )
         logger.info(f"Whoami response status: {response.status_code}")
-        logger.info(f"Whoami response content: {response.text[:200]}")  # Log first 200 chars of response
-        response.raise_for_status()
-        logger.info("Successfully validated HuggingFace API key")
+        
+        if response.status_code == 200:
+            user_data = response.json()
+            logger.info(f"User data: {user_data}")
+            
+            # Check if user has accepted terms
+            if not user_data.get('accepted_terms', False):
+                raise RuntimeError(
+                    "You need to accept the HuggingFace terms of use. "
+                    "Please visit https://huggingface.co/settings/tokens to accept the terms."
+                )
+            
+            # Check if user has verified email
+            if not user_data.get('email_verified', False):
+                raise RuntimeError(
+                    "Your HuggingFace email is not verified. "
+                    "Please verify your email at https://huggingface.co/settings/account"
+                )
+            
+            logger.info("Successfully validated HuggingFace API key and user permissions")
+        else:
+            logger.error(f"Unexpected response from whoami endpoint: {response.text[:200]}")
+            raise RuntimeError(f"Failed to validate API key. Status code: {response.status_code}")
+            
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to validate HuggingFace API key: {str(e)}")
         if hasattr(e, 'response') and e.response is not None:
             logger.error(f"Response status code: {e.response.status_code}")
-            logger.error(f"Response content: {e.response.text[:200]}")  # Log first 200 chars of error response
+            logger.error(f"Response content: {e.response.text[:200]}")
             if e.response.status_code == 401:
                 raise RuntimeError(
                     "Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens. "
-                    "Make sure the key is active and has the correct permissions."
+                    "Make sure you have the following permissions:\n"
+                    "- Read access to contents of all public gated repos\n"
+                    "- Make calls to Inference Providers"
                 )
             elif e.response.status_code == 403:
                 raise RuntimeError(
-                    "Access denied. Please check if your HuggingFace API key has the correct permissions. "
-                    "You may need to accept the terms of use at https://huggingface.co/settings/tokens"
+                    "Access denied. Please check if your HuggingFace API key has the correct permissions:\n"
+                    "- Read access to contents of all public gated repos\n"
+                    "- Make calls to Inference Providers\n"
+                    "You may also need to accept the terms of use at https://huggingface.co/settings/tokens"
                 )
         raise RuntimeError(f"Failed to connect to HuggingFace services: {str(e)}")
     
@@ -77,6 +102,8 @@ def validate_hf_api_key():
             timeout=10
         )
         logger.info(f"LLM response status: {llm_response.status_code}")
+        if llm_response.status_code != 200:
+            logger.error(f"LLM response content: {llm_response.text[:200]}")
         llm_response.raise_for_status()
         logger.info("Successfully validated LLM endpoint")
         
@@ -89,6 +116,8 @@ def validate_hf_api_key():
             timeout=10
         )
         logger.info(f"Embedding response status: {embed_response.status_code}")
+        if embed_response.status_code != 200:
+            logger.error(f"Embedding response content: {embed_response.text[:200]}")
         embed_response.raise_for_status()
         logger.info("Successfully validated embedding endpoint")
         
@@ -97,16 +126,20 @@ def validate_hf_api_key():
         logger.error(f"Failed to validate model endpoints: {str(e)}")
         if hasattr(e, 'response') and e.response is not None:
             logger.error(f"Response status code: {e.response.status_code}")
-            logger.error(f"Response content: {e.response.text[:200]}")  # Log first 200 chars of error response
+            logger.error(f"Response content: {e.response.text[:200]}")
             if e.response.status_code == 401:
                 raise RuntimeError(
                     "Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens. "
-                    "Make sure the key is active and has the correct permissions."
+                    "Make sure you have the following permissions:\n"
+                    "- Read access to contents of all public gated repos\n"
+                    "- Make calls to Inference Providers"
                 )
             elif e.response.status_code == 403:
                 raise RuntimeError(
-                    "Access denied. Please check if your HuggingFace API key has the correct permissions. "
-                    "You may need to accept the terms of use at https://huggingface.co/settings/tokens"
+                    "Access denied. Please check if your HuggingFace API key has the correct permissions:\n"
+                    "- Read access to contents of all public gated repos\n"
+                    "- Make calls to Inference Providers\n"
+                    "You may also need to accept the terms of use at https://huggingface.co/settings/tokens"
                 )
             elif e.response.status_code == 503:
                 raise RuntimeError("HuggingFace services are currently unavailable. Please try again later.")
