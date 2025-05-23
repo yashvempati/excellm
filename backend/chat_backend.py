@@ -15,186 +15,64 @@ from langchain_community.vectorstores.utils import filter_complex_metadata
 from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from ctransformers import AutoModelForCausalLM
+from sentence_transformers import SentenceTransformer
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def validate_hf_api_key():
-    """Validate the HuggingFace API key and test the connection."""
-    HF_API_KEY = os.environ.get("HF_API_KEY")
-    if not HF_API_KEY:
-        logger.error("HuggingFace API key not found in environment variables")
-        raise RuntimeError(
-            "HuggingFace API key not found. Please set the HF_API_KEY environment variable. "
-            "You can get an API key from https://huggingface.co/settings/tokens"
-        )
-    
-    # Log the first few characters of the API key for debugging (safely)
-    masked_key = HF_API_KEY[:4] + "..." + HF_API_KEY[-4:] if len(HF_API_KEY) > 8 else "***"
-    logger.info(f"Attempting to validate HuggingFace API key: {masked_key}")
-    
-    # Test both the API key and the model endpoints
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    
-    # First test the API key with the whoami endpoint to check permissions
+# Initialize models
+def initialize_models():
+    """Initialize the LLM and embedding models."""
     try:
-        logger.info("Testing API key with whoami endpoint...")
-        response = requests.get(
-            "https://huggingface.co/api/whoami",
-            headers=headers,
-            timeout=10
+        # Initialize Deepseek R1 Distill Llama
+        llm = AutoModelForCausalLM.from_pretrained(
+            "TheBloke/deepseek-coder-1.3b-base-GGUF",
+            model_file="deepseek-coder-1.3b-base.Q4_K_M.gguf",
+            model_type="llama",
+            gpu_layers=0  # CPU only for Render free tier
         )
-        logger.info(f"Whoami response status: {response.status_code}")
         
-        if response.status_code == 200:
-            user_data = response.json()
-            logger.info(f"User data: {user_data}")
-            
-            # Check if user has accepted terms
-            if not user_data.get('accepted_terms', False):
-                raise RuntimeError(
-                    "You need to accept the HuggingFace terms of use. "
-                    "Please visit https://huggingface.co/settings/tokens to accept the terms."
-                )
-            
-            # Check if user has verified email
-            if not user_data.get('email_verified', False):
-                raise RuntimeError(
-                    "Your HuggingFace email is not verified. "
-                    "Please verify your email at https://huggingface.co/settings/account"
-                )
-            
-            logger.info("Successfully validated HuggingFace API key and user permissions")
-        else:
-            logger.error(f"Unexpected response from whoami endpoint: {response.text[:200]}")
-            raise RuntimeError(f"Failed to validate API key. Status code: {response.status_code}")
-            
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to validate HuggingFace API key: {str(e)}")
-        if hasattr(e, 'response') and e.response is not None:
-            logger.error(f"Response status code: {e.response.status_code}")
-            logger.error(f"Response content: {e.response.text[:200]}")
-            if e.response.status_code == 401:
-                raise RuntimeError(
-                    "Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens. "
-                    "Make sure you have the following permissions:\n"
-                    "- Read access to contents of all public gated repos\n"
-                    "- Make calls to Inference Providers"
-                )
-            elif e.response.status_code == 403:
-                raise RuntimeError(
-                    "Access denied. Please check if your HuggingFace API key has the correct permissions:\n"
-                    "- Read access to contents of all public gated repos\n"
-                    "- Make calls to Inference Providers\n"
-                    "You may also need to accept the terms of use at https://huggingface.co/settings/tokens"
-                )
-        raise RuntimeError(f"Failed to connect to HuggingFace services: {str(e)}")
-    
-    # Then test the model endpoints
-    try:
-        # Test LLM endpoint
-        logger.info("Testing LLM endpoint...")
-        llm_response = requests.post(
-            HF_LLM_URL,
-            headers=headers,
-            json={"inputs": "test"},
-            timeout=10
-        )
-        logger.info(f"LLM response status: {llm_response.status_code}")
-        if llm_response.status_code != 200:
-            logger.error(f"LLM response content: {llm_response.text[:200]}")
-        llm_response.raise_for_status()
-        logger.info("Successfully validated LLM endpoint")
+        # Initialize sentence transformer for embeddings
+        embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         
-        # Test embedding endpoint
-        logger.info("Testing embedding endpoint...")
-        embed_response = requests.post(
-            HF_EMBED_URL,
-            headers=headers,
-            json={"inputs": ["test"]},
-            timeout=10
-        )
-        logger.info(f"Embedding response status: {embed_response.status_code}")
-        if embed_response.status_code != 200:
-            logger.error(f"Embedding response content: {embed_response.text[:200]}")
-        embed_response.raise_for_status()
-        logger.info("Successfully validated embedding endpoint")
-        
-        return HF_API_KEY
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to validate model endpoints: {str(e)}")
-        if hasattr(e, 'response') and e.response is not None:
-            logger.error(f"Response status code: {e.response.status_code}")
-            logger.error(f"Response content: {e.response.text[:200]}")
-            if e.response.status_code == 401:
-                raise RuntimeError(
-                    "Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens. "
-                    "Make sure you have the following permissions:\n"
-                    "- Read access to contents of all public gated repos\n"
-                    "- Make calls to Inference Providers"
-                )
-            elif e.response.status_code == 403:
-                raise RuntimeError(
-                    "Access denied. Please check if your HuggingFace API key has the correct permissions:\n"
-                    "- Read access to contents of all public gated repos\n"
-                    "- Make calls to Inference Providers\n"
-                    "You may also need to accept the terms of use at https://huggingface.co/settings/tokens"
-                )
-            elif e.response.status_code == 503:
-                raise RuntimeError("HuggingFace services are currently unavailable. Please try again later.")
-        raise RuntimeError(f"Failed to connect to HuggingFace model services: {str(e)}")
+        return llm, embedding_model
     except Exception as e:
-        logger.error(f"Unexpected error during API validation: {str(e)}")
-        raise RuntimeError(f"Failed to validate HuggingFace services: {str(e)}")
+        logger.error(f"Failed to initialize models: {str(e)}")
+        raise RuntimeError(f"Failed to initialize models: {str(e)}")
 
-# Validate API key at startup
+# Initialize models
 try:
-    logger.info("Starting HuggingFace API validation...")
-    HF_API_KEY = validate_hf_api_key()
-    logger.info("Successfully initialized HuggingFace API connection")
+    logger.info("Initializing models...")
+    llm, embedding_model = initialize_models()
+    logger.info("Successfully initialized models")
 except Exception as e:
-    logger.error(f"Failed to initialize HuggingFace API: {str(e)}")
+    logger.error(f"Failed to initialize models: {str(e)}")
     raise
 
-HF_LLM_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
-HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
-
-def hf_generate(prompt):
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    payload = {"inputs": prompt}
+def generate_text(prompt):
+    """Generate text using Deepseek R1 Distill Llama."""
     try:
-        response = requests.post(HF_LLM_URL, headers=headers, json=payload)
-        response.raise_for_status()
-        result = response.json()
-        if isinstance(result, list) and "generated_text" in result[0]:
-            return result[0]["generated_text"]
-        elif isinstance(result, dict) and "generated_text" in result:
-            return result["generated_text"]
-        else:
-            return str(result)
-    except requests.exceptions.RequestException as e:
-        if response.status_code == 401:
-            raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
-        elif response.status_code == 403:
-            raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
-        else:
-            raise RuntimeError(f"Error calling HuggingFace API: {str(e)}")
+        response = llm(
+            prompt,
+            max_new_tokens=1024,
+            temperature=0.1,
+            top_p=0.95,
+            repetition_penalty=1.1
+        )
+        return response.strip()
+    except Exception as e:
+        logger.error(f"Error generating text: {str(e)}")
+        raise RuntimeError(f"Failed to generate response: {str(e)}")
 
-def hf_embed(texts):
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    payload = {"inputs": texts}
+def get_embeddings(texts):
+    """Get embeddings using sentence-transformers."""
     try:
-        response = requests.post(HF_EMBED_URL, headers=headers, json=payload)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        if response.status_code == 401:
-            raise RuntimeError("Invalid HuggingFace API key. Please check your API key at https://huggingface.co/settings/tokens")
-        elif response.status_code == 403:
-            raise RuntimeError("Access denied. Please check if your HuggingFace API key has the correct permissions.")
-        else:
-            raise RuntimeError(f"Error calling HuggingFace API: {str(e)}")
+        return embedding_model.encode(texts)
+    except Exception as e:
+        logger.error(f"Error getting embeddings: {str(e)}")
+        raise RuntimeError(f"Failed to get embeddings: {str(e)}")
 
 class ChatData:
     def __init__(self):
@@ -256,14 +134,14 @@ class ChatData:
 
     def _initialize_vector_store(self, documents):
         try:
-            # Use HuggingFace embeddings for all documents
+            # Use sentence-transformers embeddings for all documents
             texts = [doc.page_content for doc in documents]
-            embeddings = hf_embed(texts)
+            embeddings = get_embeddings(texts)
             for i, doc in enumerate(documents):
                 doc.embedding = embeddings[i]
             self.vector_store = Chroma.from_documents(
                 documents=documents,
-                embedding_function=lambda docs: hf_embed([d.page_content for d in docs]),
+                embedding_function=lambda docs: get_embeddings([d.page_content for d in docs]),
                 persist_directory=self.persist_directory
             )
             self.vector_store.persist()
@@ -402,7 +280,7 @@ class ChatData:
         docs = self.retriever.get_relevant_documents(question)
         context = "\n".join([doc.page_content for doc in docs])
         prompt = self.prompt.format(question=question, context=context)
-        return hf_generate(prompt)
+        return generate_text(prompt)
 
     def ask(self, query: str):
         if not self.chain:
@@ -418,6 +296,7 @@ class ChatData:
             else:
                 return response
         except Exception as e:
+            logger.error(f"Error in ask method: {str(e)}")
             return f"Error processing your question: {str(e)}"
 
     def clear(self):
