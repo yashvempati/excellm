@@ -21,8 +21,8 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Create model directory
 RUN mkdir -p /app/models
 
-# Download the Deepseek R1 Distill Llama model
-RUN curl -L https://huggingface.co/TheBloke/deepseek-coder-1.3b-base-GGUF/resolve/main/deepseek-coder-1.3b-base.Q4_K_M.gguf -o /app/models/deepseek-coder-1.3b-base.Q4_K_M.gguf
+# Download the TinyLlama model
+RUN curl -L https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf -o /app/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
 
 # Copy application code
 COPY . .
