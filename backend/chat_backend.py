@@ -31,7 +31,9 @@ def initialize_models():
             "TheBloke/deepseek-coder-1.3b-base-GGUF",
             model_file="deepseek-coder-1.3b-base.Q4_K_M.gguf",
             model_type="llama",
-            gpu_layers=0  # CPU only for Render free tier
+            gpu_layers=0,  # CPU only for Render free tier
+            context_length=2048,  # Set a reasonable context length
+            threads=4  # Limit threads to stay within Render's free tier
         )
         
         # Initialize sentence transformer for embeddings
@@ -54,12 +56,15 @@ except Exception as e:
 def generate_text(prompt):
     """Generate text using Deepseek R1 Distill Llama."""
     try:
+        # Format the prompt properly for the model
+        formatted_prompt = f"### Instruction: {prompt}\n\n### Response:"
         response = llm(
-            prompt,
+            formatted_prompt,
             max_new_tokens=1024,
             temperature=0.1,
             top_p=0.95,
-            repetition_penalty=1.1
+            repetition_penalty=1.1,
+            stop=["### Instruction:", "\n\n"]  # Stop at the next instruction or double newline
         )
         return response.strip()
     except Exception as e:
