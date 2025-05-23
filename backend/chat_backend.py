@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 def initialize_models():
     """Initialize the LLM and embedding models."""
     try:
-        # Initialize TinyLlama
+        # Initialize AMD-Llama
         llm = AutoModelForCausalLM.from_pretrained(
-            "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
-            model_file="tinyllama-1.1b-chat-v1.0.Q2_K.gguf",
+            "QuantFactory/AMD-Llama-135m-GGUF",
+            model_file="Llama-135M-q4_0-main.gguf",
             model_type="llama",
             gpu_layers=0,  # CPU only for Render free tier
             context_length=512,  # Set a reasonable context length
@@ -55,7 +55,7 @@ except Exception as e:
     raise
 
 def generate_text(prompt):
-    """Generate text using TinyLlama."""
+    """Generate text using AMD-Llama."""
     try:
         # Format the prompt properly for chat
         formatted_prompt = f"<|system|>\nYou are a helpful assistant focused on analyzing Excel data and generating insights. Stick strictly to the provided context.\n<|user|>\n{prompt}\n<|assistant|>\n"

@@ -19,9 +19,9 @@ RUN python3 -m venv /opt/venv
 COPY requirements.txt .
 RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Download the TinyLlama model
+# Download the AMD-Llama model
 RUN mkdir -p /app/models && \
-    curl -L https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q2_K.gguf -o /app/models/tinyllama-1.1b-chat-v1.0.Q2_K.gguf
+    curl -L https://huggingface.co/QuantFactory/AMD-Llama-135m-GGUF/resolve/main/Llama-135M-q4_0-main.gguf -o /app/models/Llama-135M-q4_0-main.gguf
 
 # Final Stage
 FROM python:3.10-slim
