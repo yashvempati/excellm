@@ -10,5 +10,5 @@ services:
     plan: free
     resources:
       cpu: 2
-      memory: 4GB
+      memory: 512MB
       disk: 10GB
