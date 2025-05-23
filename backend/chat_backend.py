@@ -2,6 +2,7 @@ import os
 import stat
 import io
 import shutil
+import gc
 import threading
 import time
 import requests
@@ -32,8 +33,8 @@ def initialize_models():
             model_file="tinyllama-1.1b-chat-v1.0.Q2_K.gguf",
             model_type="llama",
             gpu_layers=0,  # CPU only for Render free tier
-            context_length=1024,  # Set a reasonable context length
-            threads=2  # Limit threads to stay within Render's free tier
+            context_length=512,  # Set a reasonable context length
+            threads=1  # Limit threads to stay within Render's free tier
         )
         
         # Initialize sentence transformer for embeddings
@@ -161,35 +162,36 @@ class ChatData:
 
             # Read all sheets from the Excel file
             excel_file.seek(0)
-            logger.info("Attempting to read Excel file...")
+            logger.info("Attempting to read Excel file structure...")
             
             try:
-                excel_data = pd.read_excel(
-                    excel_file,
-                    sheet_name=None,
-                    engine='openpyxl',
-                    dtype=str  # Force all columns to string type
-                )
+                xls = pd.ExcelFile(excel_file)
+                sheet_names = xls.sheet_names
             except Exception as e:
-                logger.error(f"Error reading Excel file: {str(e)}")
+                logger.error(f"Error reading Excel file structure: {str(e)}")
                 logger.error(traceback.format_exc())
-                raise ValueError(f"Failed to read Excel file: {str(e)}")
-            
-            if not excel_data:
-                raise ValueError("No data found in the Excel file")
+                raise ValueError(f"Failed to read Excel file structure: {str(e)}")
+
+            if not sheet_names:
+                raise ValueError("No sheets found in the Excel file")
 
             all_docs = []
             total_rows = 0
+            processed_sheets_count = 0
 
-            # Process each sheet
-            for sheet_name, df in excel_data.items():
+            # Process each sheet one by one
+            for sheet_name in sheet_names:
                 logger.info(f"Processing sheet: {sheet_name}")
-                
-                if df.empty:
-                    logger.info(f"Skipping empty sheet: {sheet_name}")
-                    continue
-
                 try:
+                    # Read the specific sheet into a DataFrame
+                    df = pd.read_excel(xls, sheet_name=sheet_name, engine='openpyxl', dtype=str)
+                    
+                    if df.empty:
+                        logger.info(f"Skipping empty sheet: {sheet_name}")
+                        del df
+                        gc.collect()
+                        continue
+
                     # Clean column names
                     df.columns = [str(col).strip() for col in df.columns]
                     
@@ -198,12 +200,15 @@ class ChatData:
                     
                     if df.empty:
                         logger.info(f"No data in sheet after cleaning: {sheet_name}")
+                        del df
+                        gc.collect()
                         continue
 
                     # Convert all data to strings and clean
                     df = df.astype(str)
                     df = df.apply(lambda x: x.str.strip())
                     
+                    sheet_docs_count = 0
                     # Create documents for each row
                     for idx, row in df.iterrows():
                         try:
@@ -229,18 +234,28 @@ class ChatData:
                                     }
                                 ))
                                 total_rows += 1
+                                sheet_docs_count +=1
                         except Exception as e:
                             logger.error(f"Error processing row {idx} in sheet {sheet_name}: {str(e)}")
                             continue
+                    
+                    logger.info(f"Successfully processed {sheet_docs_count} rows from sheet: {sheet_name}")
+                    processed_sheets_count += 1
 
                 except Exception as e:
                     logger.error(f"Error processing sheet {sheet_name}: {str(e)}")
-                    continue
+                    # Optionally, re-raise or handle as per overall error strategy
+                    # For now, we log and continue to next sheet to make it robust
+                    # raise # Re-raise if one sheet failure should stop all processing
+                finally:
+                    if 'df' in locals(): # Ensure df exists before deleting
+                        del df # Explicitly delete the DataFrame
+                    gc.collect() # Suggest garbage collection
 
             if not all_docs:
-                raise ValueError("No valid data found in the Excel file")
+                raise ValueError("No valid data found in any sheet of the Excel file")
 
-            logger.info(f"Successfully processed {total_rows} rows from {len(excel_data)} sheets")
+            logger.info(f"Successfully processed {total_rows} rows from {processed_sheets_count} sheets out of {len(sheet_names)} total sheets.")
 
             # Split documents into chunks
             chunks = self.text_splitter.split_documents(all_docs)
