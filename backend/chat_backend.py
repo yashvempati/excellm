@@ -29,11 +29,11 @@ def initialize_models():
         # Initialize TinyLlama
         llm = AutoModelForCausalLM.from_pretrained(
             "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
-            model_file="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            model_file="tinyllama-1.1b-chat-v1.0.Q2_K.gguf",
             model_type="llama",
             gpu_layers=0,  # CPU only for Render free tier
-            context_length=2048,  # Set a reasonable context length
-            threads=4  # Limit threads to stay within Render's free tier
+            context_length=1024,  # Set a reasonable context length
+            threads=2  # Limit threads to stay within Render's free tier
         )
         
         # Initialize sentence transformer for embeddings
