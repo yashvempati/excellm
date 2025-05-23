@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 def initialize_models():
     """Initialize the LLM and embedding models."""
     try:
-        # Initialize Deepseek R1 Distill Llama
+        # Initialize TinyLlama
         llm = AutoModelForCausalLM.from_pretrained(
-            "TheBloke/deepseek-coder-1.3b-base-GGUF",
-            model_file="deepseek-coder-1.3b-base.Q4_K_M.gguf",
+            "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+            model_file="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
             model_type="llama",
             gpu_layers=0,  # CPU only for Render free tier
             context_length=2048,  # Set a reasonable context length
@@ -54,17 +54,17 @@ except Exception as e:
     raise
 
 def generate_text(prompt):
-    """Generate text using Deepseek R1 Distill Llama."""
+    """Generate text using TinyLlama."""
     try:
-        # Format the prompt properly for the model
-        formatted_prompt = f"### Instruction: {prompt}\n\n### Response:"
+        # Format the prompt properly for chat
+        formatted_prompt = f"<|system|>\nYou are a helpful assistant focused on analyzing Excel data and generating insights. Stick strictly to the provided context.\n<|user|>\n{prompt}\n<|assistant|>\n"
         response = llm(
             formatted_prompt,
             max_new_tokens=1024,
             temperature=0.1,
             top_p=0.95,
             repetition_penalty=1.1,
-            stop=["### Instruction:", "\n\n"]  # Stop at the next instruction or double newline
+            stop=["<|user|>", "<|system|>"]  # Stop at the next user or system message
         )
         return response.strip()
     except Exception as e:
