@@ -1,5 +1,6 @@
 import os
 import io
+import pandas as pd
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
@@ -70,43 +71,27 @@ async def upload_file(file: UploadFile = File(...)):
         # Create BytesIO object and ensure it's at the beginning
         excel_stream = io.BytesIO(file_content)
         excel_stream.seek(0)
-        
-        # Try to validate and process the Excel file
+
+        # Convert Excel to CSV
+        csv_stream = io.StringIO()
         try:
-            rows_processed = chat_engine.ingest_excel(excel_stream)
-            return JSONResponse({
-                "message": f"Successfully processed {rows_processed} rows from {file.filename}",
-                "status": "success",
-                "rows_processed": rows_processed
-            })
-        except ValueError as ve:
-            # Log the error for debugging
-            print(f"Excel processing error: {str(ve)}")
-            raise HTTPException(status_code=400, detail=str(ve))
-        except RuntimeError as re:
-            # Handle HuggingFace API errors
-            error_msg = str(re)
-            if "HuggingFace API key" in error_msg or "Failed to connect to HuggingFace services" in error_msg:
-                print(f"HuggingFace API error: {error_msg}")
-                raise HTTPException(
-                    status_code=503,
-                    detail="Failed to connect to AI services. Please check your API key configuration and internet connection."
-                )
-            raise HTTPException(status_code=500, detail=error_msg)
+            df = pd.read_excel(excel_stream, engine='openpyxl')
+            df.to_csv(csv_stream, index=False)
+            csv_stream.seek(0)  # Reset stream position for reading
         except Exception as e:
-            # Log the error for debugging
-            print(f"Unexpected error during Excel processing: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error processing Excel file: {str(e)}")
-        finally:
-            # Clean up
-            excel_stream.close()
-            await file.close()
-            
+            raise HTTPException(status_code=400, detail=f"Error converting Excel to CSV: {str(e)}")
+
+        # Process the CSV stream
+        rows_processed = chat_engine.ingest_csv(csv_stream)
+        return JSONResponse({
+            "message": f"Successfully processed {rows_processed} rows from {file.filename}",
+            "status": "success",
+            "rows_processed": rows_processed
+        })
+
     except HTTPException:
         raise
     except Exception as e:
-        # Log the error for debugging
-        print(f"File upload error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error with file upload: {str(e)}")
 
 @app.post("/ask/")
