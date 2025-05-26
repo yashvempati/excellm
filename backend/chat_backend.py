@@ -2,7 +2,6 @@ import os
 import stat
 import io
 import shutil
-import gc
 import threading
 import time
 import requests
@@ -27,14 +26,14 @@ logger = logging.getLogger(__name__)
 def initialize_models():
     """Initialize the LLM and embedding models."""
     try:
-        # Initialize AMD-Llama
+        # Initialize TinyLlama
         llm = AutoModelForCausalLM.from_pretrained(
-            "QuantFactory/AMD-Llama-135m-GGUF",
-            model_file="Llama-135M-q4_0-main.gguf",
+            "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+            model_file="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
             model_type="llama",
             gpu_layers=0,  # CPU only for Render free tier
-            context_length=512,  # Set a reasonable context length
-            threads=1  # Limit threads to stay within Render's free tier
+            context_length=2048,  # Set a reasonable context length
+            threads=4  # Limit threads to stay within Render's free tier
         )
         
         # Initialize sentence transformer for embeddings
@@ -55,7 +54,7 @@ except Exception as e:
     raise
 
 def generate_text(prompt):
-    """Generate text using AMD-Llama."""
+    """Generate text using TinyLlama."""
     try:
         # Format the prompt properly for chat
         formatted_prompt = f"<|system|>\nYou are a helpful assistant focused on analyzing Excel data and generating insights. Stick strictly to the provided context.\n<|user|>\n{prompt}\n<|assistant|>\n"
@@ -154,108 +153,57 @@ class ChatData:
         except Exception as e:
             raise RuntimeError(f"Failed to initialize vector store: {str(e)}")
 
-    def ingest_excel(self, excel_file):
-        """Ingest Excel file using pandas for reliable processing."""
+    def ingest_csv(self, csv_file):
+        """Ingest CSV file using pandas for reliable processing."""
         try:
-            if not isinstance(excel_file, io.BytesIO):
-                raise TypeError("Uploaded file must be a BytesIO object")
+            if not isinstance(csv_file, io.StringIO):
+                raise TypeError("Uploaded file must be a StringIO object")
 
-            # Read all sheets from the Excel file
-            excel_file.seek(0)
-            logger.info("Attempting to read Excel file structure...")
+            # Read the CSV file
+            csv_file.seek(0)
+            logger.info("Attempting to read CSV file...")
             
             try:
-                xls = pd.ExcelFile(excel_file)
-                sheet_names = xls.sheet_names
+                df = pd.read_csv(csv_file)
             except Exception as e:
-                logger.error(f"Error reading Excel file structure: {str(e)}")
+                logger.error(f"Error reading CSV file: {str(e)}")
                 logger.error(traceback.format_exc())
-                raise ValueError(f"Failed to read Excel file structure: {str(e)}")
-
-            if not sheet_names:
-                raise ValueError("No sheets found in the Excel file")
+                raise ValueError(f"Failed to read CSV file: {str(e)}")
+            
+            if df.empty:
+                raise ValueError("No data found in the CSV file")
 
             all_docs = []
             total_rows = 0
-            processed_sheets_count = 0
 
-            # Process each sheet one by one
-            for sheet_name in sheet_names:
-                logger.info(f"Processing sheet: {sheet_name}")
+            # Process the DataFrame
+            for idx, row in df.iterrows():
                 try:
-                    # Read the specific sheet into a DataFrame
-                    df = pd.read_excel(xls, sheet_name=sheet_name, engine='openpyxl', dtype=str)
-                    
-                    if df.empty:
-                        logger.info(f"Skipping empty sheet: {sheet_name}")
-                        del df
-                        gc.collect()
+                    # Skip rows where all values are empty strings
+                    if all(pd.isna(row)):
                         continue
-
-                    # Clean column names
-                    df.columns = [str(col).strip() for col in df.columns]
+                        
+                    # Create row data dictionary
+                    row_data = {col: val for col, val in row.items() if pd.notna(val)}
                     
-                    # Remove completely empty rows
-                    df = df.dropna(how='all')
-                    
-                    if df.empty:
-                        logger.info(f"No data in sheet after cleaning: {sheet_name}")
-                        del df
-                        gc.collect()
-                        continue
-
-                    # Convert all data to strings and clean
-                    df = df.astype(str)
-                    df = df.apply(lambda x: x.str.strip())
-                    
-                    sheet_docs_count = 0
-                    # Create documents for each row
-                    for idx, row in df.iterrows():
-                        try:
-                            # Skip rows where all values are empty strings
-                            if all(val == '' for val in row):
-                                continue
-                                
-                            # Create row data dictionary
-                            row_data = {col: val for col, val in row.items() if val != ''}
-                            
-                            if row_data:
-                                content = (
-                                    f"Sheet: {sheet_name}\n"
-                                    f"Row {idx + 2}\n"  # +2 because pandas is 0-based and we want to account for header
-                                    f"Data:\n{row_data}"
-                                )
-                                all_docs.append(Document(
-                                    page_content=content,
-                                    metadata={
-                                        "sheet": sheet_name,
-                                        "row": idx + 2,
-                                        "headers": list(df.columns)
-                                    }
-                                ))
-                                total_rows += 1
-                                sheet_docs_count +=1
-                        except Exception as e:
-                            logger.error(f"Error processing row {idx} in sheet {sheet_name}: {str(e)}")
-                            continue
-                    
-                    logger.info(f"Successfully processed {sheet_docs_count} rows from sheet: {sheet_name}")
-                    processed_sheets_count += 1
-
+                    if row_data:
+                        content = (
+                            f"Row {idx + 1}\n"  # +1 because pandas is 0-based
+                            f"Data:\n{row_data}"
+                        )
+                        all_docs.append(Document(
+                            page_content=content,
+                            metadata={"row": idx + 1}
+                        ))
+                        total_rows += 1
                 except Exception as e:
-                    logger.error(f"Error processing sheet {sheet_name}: {str(e)}")
-                    # Optionally, re-raise or handle as per overall error strategy
-                    # For now, we log and continue to next sheet to make it robust
-                    # raise # Re-raise if one sheet failure should stop all processing
-                finally:
-                    if 'df' in locals(): # Ensure df exists before deleting
-                        del df # Explicitly delete the DataFrame
-                    gc.collect() # Suggest garbage collection
+                    logger.error(f"Error processing row {idx}: {str(e)}")
+                    continue
 
             if not all_docs:
-                raise ValueError("No valid data found in any sheet of the Excel file")
+                raise ValueError("No valid data found in the CSV file")
 
-            logger.info(f"Successfully processed {total_rows} rows from {processed_sheets_count} sheets out of {len(sheet_names)} total sheets.")
+            logger.info(f"Successfully processed {total_rows} rows from the CSV file")
 
             # Split documents into chunks
             chunks = self.text_splitter.split_documents(all_docs)
@@ -275,68 +223,49 @@ class ChatData:
 
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Error in ingest_excel: {error_msg}")
+            logger.error(f"Error in ingest_csv: {error_msg}")
             logger.error(traceback.format_exc())
             
             if "No data found" in error_msg:
-                raise ValueError("The Excel file contains no data")
+                raise ValueError("The CSV file contains no data")
             elif "No valid data" in error_msg:
-                raise ValueError("No valid data could be extracted from the Excel file")
-            elif "Failed to read Excel file" in error_msg:
-                raise ValueError(error_msg)
+                raise ValueError("No valid data could be extracted from the CSV file")
             else:
-                raise RuntimeError(f"Failed to process Excel file: {error_msg}")
+                raise RuntimeError(f"Failed to process CSV file: {error_msg}")
 
     def _create_retriever_and_chain(self):
         if self.vector_store:
+            # We are using a custom embedding function with Chroma, so it expects a list of Document objects
+            # or texts, and it will apply the embedding function.
+            # The retriever uses this underlying embedding function when performing similarity searches.
             self.retriever = self.vector_store.as_retriever(
                 search_type="similarity_score_threshold",
                 search_kwargs={"k": 3, "score_threshold": 0.5}
             )
-            self.chain = self._chain
-
-    def _chain(self, question):
-        # Retrieve context
-        docs = self.retriever.get_relevant_documents(question)
-        context = "\n".join([doc.page_content for doc in docs])
-        prompt = self.prompt.format(question=question, context=context)
-        return generate_text(prompt)
+            self.chain = (
+                {"context": self.retriever, "question": RunnablePassthrough()}
+                | self.prompt
+                | StrOutputParser() # Use StrOutputParser to get the string output from the LLM
+            )
 
     def ask(self, query: str):
         if not self.chain:
             return "Please, add an Excel file first."
         try:
-            response = self.chain(query).strip()
+            response = self.chain.invoke(query).strip() # Use .invoke() for the Runnable chain
             self.chat_history.append({"question": query, "answer": response})
-            if response.startswith("```python") and response.endswith("````"):
-                code = response[9:-3].strip()
-                return f"CODE:\n{code}"
-            elif response.startswith("|") and "\n|" in response:
-                return f"TABLE:{response}"
+            
+            # Handling different response formats based on the prompt instructions
+            if response.startswith("TABLE:"):
+                # Remove "TABLE:" prefix and return as markdown table
+                return response[len("TABLE:"):].strip()
+            elif response.startswith("CODE:"):
+                # Remove "CODE:" prefix and return as a code block
+                return f"```python\n{response[len('CODE:'):].strip()}\n```"
             else:
+                # Default to plain text
                 return response
         except Exception as e:
-            logger.error(f"Error in ask method: {str(e)}")
-            return f"Error processing your question: {str(e)}"
-
-    def clear(self):
-        try:
-            if os.path.exists(self.persist_directory):
-                shutil.rmtree(self.persist_directory)
-            self.vector_store = None
-            self.retriever = None
-            self.chain = None
-            self.chat_history = []
-        except Exception as e:
-            raise RuntimeError(f"Failed to clear data: {str(e)}")
-
-    def export_chat_history(self):
-        if not self.chat_history:
-            return "No chat history available."
-        try:
-            lines = []
-            for entry in self.chat_history:
-                lines.append(f"Q: {entry['question']}\nA: {entry['answer']}\n")
-            return "\n".join(lines)
-        except Exception as e:
-            raise RuntimeError(f"Failed to export chat history: {str(e)}")
+            logger.error(f"Error in ask: {str(e)}")
+            logger.error(traceback.format_exc())
+            return f"An error occurred: {str(e)}"
