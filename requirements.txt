@@ -8,19 +8,19 @@ langchain>=0.1.0
 chromadb==0.4.18
 pydantic==2.5.0
 python-multipart==0.0.18
-requests==2.32.2
+requests==2.32.4
 zipp==3.19.1
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.2.0
+torch==2.9.0
 sentence-transformers==3.1.0
 ctransformers==0.2.27
 huggingface-hub==0.19.3
 numpy>=1.24.0
-pillow>=10.0.0 # not directly required, pinned by Snyk to avoid a vulnerability
-transformers>=4.36.0 # not directly required, pinned by Snyk to avoid a vulnerability
-urllib3>=1.26.19 # not directly required, pinned by Snyk to avoid a vulnerability
+pillow>=10.3.0 # not directly required, pinned by Snyk to avoid a vulnerability
+transformers>=5.0.0rc1 # not directly required, pinned by Snyk to avoid a vulnerability
+urllib3>=2.6.0 # not directly required, pinned by Snyk to avoid a vulnerability
 nltk>=3.9 # not directly required, pinned by Snyk to avoid a vulnerability
-setuptools>=65.5.1 # not directly required, pinned by Snyk to avoid a vulnerability
+setuptools>=78.1.1 # not directly required, pinned by Snyk to avoid a vulnerability
 wheel>=0.38.0 # not directly required, pinned by Snyk to avoid a vulnerability
 filelock>=3.20.1 # not directly required, pinned by Snyk to avoid a vulnerability
 scikit-learn>=1.5.0 # not directly required, pinned by Snyk to avoid a vulnerability
